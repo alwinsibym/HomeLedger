@@ -27,6 +27,23 @@ class Base(unittest.TestCase):
             {"ledger_id": self.L[acct], "side": "Dr", "amount": str(amt)}]})
 
 
+class TestYearEnd(Base):
+    """Books run across financial years (April-March): balances and profit carry forward by themselves."""
+    def test_carry_forward_across_years(self):
+        self.rec("2025-06-10", "Rubber Sales", 100000, "Cash")       # FY 2025-26: earned 1,00,000
+        self.pay("2025-09-01", "Groceries & Provisions", 30000)      # spent 30,000 -> profit 70,000
+        self.pay("2026-05-05", "Groceries & Provisions", 10000)      # FY 2026-27: spent 10,000
+        bs1 = rp.balance_sheet(self.c, "2025-04-01", "2026-03-31")
+        bs2 = rp.balance_sheet(self.c, "2026-04-01", "2027-03-31")
+        self.assertTrue(bs1["balanced"]); self.assertTrue(bs2["balanced"])
+        names = {e["name"]: e["amount"] for e in bs2["extra"]}
+        self.assertEqual(names["Profit & Loss A/c (brought forward)"], 7000000)   # last year's profit (paise)
+        self.assertEqual(names["Profit & Loss A/c (this period)"], 1000000 * -1)  # this year's 10,000 spending
+        self.assertEqual(sum(a["amount"] for a in bs2["assets"]), 6000000)       # cash left: 60,000
+        tb = rp.trial_balance(self.c, "2026-04-01", "2027-03-31")
+        self.assertTrue(tb["balanced"] if "balanced" in tb else True)
+
+
 class TestMoney(unittest.TestCase):
     def test_parse(self):
         self.assertEqual(money.parse_amount("3,000"), 300000)

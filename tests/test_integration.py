@@ -18,6 +18,19 @@ def call(path, body=None, headers=None, timeout=15):
         except ValueError: return e.code, raw.decode("utf-8", "replace")
 
 
+def callc(path, body=None, cookie=""):
+    """Like call() but also sends/returns the sign-in cookie."""
+    req = urllib.request.Request(f"http://127.0.0.1:{PORT}{path}", method="POST" if body is not None else "GET",
+                                 data=json.dumps(body).encode() if body is not None else None,
+                                 headers={"X-HomeLedger": "1", "Content-Type": "application/json", **({"Cookie": "hl_session=" + cookie} if cookie else {})})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            sc = r.headers.get("Set-Cookie") or ""
+            return r.status, json.loads(r.read() or b"null"), (sc.split(";")[0].split("=", 1)[1] if "hl_session=" in sc else "")
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read() or b"null"), ""
+
+
 class Proc:
     def __init__(self, data):
         env = dict(os.environ, HOMELEDGER_DATA=str(data), HOMELEDGER_PORT=str(PORT))
@@ -166,6 +179,88 @@ class TestServer(unittest.TestCase):
         self.assertEqual(p.returncode, 0)
         self.assertTrue(any((self.data / "backups").glob("*.db")))
         self.pr = Proc(self.data)
+
+
+class TestSignIn(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True); self.data = Path(self.tmp.name)
+        self.pr = Proc(self.data)
+
+    def tearDown(self):
+        self.pr.stop(); self.tmp.cleanup()
+
+    def enable(self):
+        s, r, ck = callc("/api/auth/enable", {"username": "father", "password": "1234"})
+        self.assertEqual(s, 200, r); self.assertTrue(ck); self.assertEqual(len(r["recovery_key"].replace("-", "")), 20)
+        return r["recovery_key"], ck
+
+    def test_off_by_default_then_on(self):
+        self.assertFalse(callc("/api/auth/state")[1]["enabled"]); self.assertEqual(callc("/api/masters")[0], 200)
+        key, ck = self.enable()
+        self.assertEqual(callc("/api/masters")[0], 401)                      # locked without the cookie
+        self.assertEqual(callc("/api/masters", cookie="forged")[0], 401)
+        self.assertEqual(callc("/api/masters", cookie=ck)[0], 200)
+        self.assertEqual(callc("/api/ping")[0], 200)                         # window heartbeat keeps working while locked
+        st = callc("/api/auth/state", cookie=ck)[1]; self.assertTrue(st["logged_in"]); self.assertEqual(st["role"], "owner")
+        self.assertFalse(callc("/api/auth/state")[1]["logged_in"])
+        self.assertEqual(callc("/api/auth/logout", {}, ck)[0], 200)
+        self.assertEqual(callc("/api/masters", cookie=ck)[0], 401)           # logged-out cookie is dead
+        s, r, ck2 = callc("/api/auth/login", {"username": "FATHER", "password": "1234"}); self.assertEqual(s, 200)   # user name ignores capitals
+        self.assertEqual(callc("/api/masters", cookie=ck2)[0], 200)
+
+    def test_wrong_passwords_lock_out(self):
+        self.enable()
+        for i in range(5):
+            s, r, _ = callc("/api/auth/login", {"username": "father", "password": "nope"}); self.assertEqual(s, 400)
+        s, r, _ = callc("/api/auth/login", {"username": "father", "password": "1234"})
+        self.assertEqual(s, 400); self.assertIn("wait", r["error"])           # even the right password waits
+
+    def test_viewer_cannot_change_and_cannot_pretend(self):
+        key, ck = self.enable()
+        self.assertEqual(callc("/api/auth/user/add", {"username": "guest", "password": "5678", "role": "viewer"}, ck)[0], 200)
+        s, r, vk = callc("/api/auth/login", {"username": "guest", "password": "5678"}); self.assertEqual(s, 200)
+        self.assertEqual(callc("/api/masters", cookie=vk)[0], 200)
+        L = {l["name"]: l["id"] for l in callc("/api/masters", cookie=vk)[1]["ledgers"]}
+        body = {"vtype": "Payment", "date": "2026-11-10", "lines": [{"ledger_id": L["Water Bill"], "side": "Dr", "amount": "10"}, {"ledger_id": L["Cash"], "side": "Cr", "amount": "10"}]}
+        self.assertEqual(callc("/api/voucher/save", body, vk)[0], 403)
+        self.assertEqual(callc("/api/voucher/save", body, ck)[0], 200)
+        self.assertEqual(callc("/api/backup/create", {}, vk)[0], 403)
+        self.assertEqual(callc("/api/auth/user/add", {"username": "x1", "password": "5678", "role": "owner"}, vk)[0], 403)
+        self.assertEqual(callc("/api/auth/users?_user=%7B%22role%22%3A%22owner%22%7D", cookie=vk)[0], 400)    # cannot smuggle a role in
+        self.assertEqual(callc("/api/auth/password", {"old": "5678", "new": "9999"}, vk)[0], 200)
+
+    def test_forgot_password_with_recovery_key(self):
+        key, ck = self.enable()
+        s, r, _ = callc("/api/auth/reset", {"key": "AAAAA-AAAAA-AAAAA-AAAAA", "new": "7777"}); self.assertEqual(s, 400)
+        s, r, _ = callc("/api/auth/reset", {"key": key.lower(), "new": "7777"}); self.assertEqual(s, 200)
+        self.assertNotEqual(r["recovery_key"], key)
+        self.assertEqual(callc("/api/auth/login", {"username": "father", "password": "1234"})[0], 400)
+        self.assertEqual(callc("/api/auth/login", {"username": "father", "password": "7777"})[0], 200)
+        self.assertEqual(callc("/api/auth/reset", {"key": key, "new": "8888"})[0], 400)       # the old key is spent
+
+    def test_turn_off_and_survives_restart(self):
+        key, ck = self.enable()
+        self.pr.stop(); self.pr = Proc(self.data)                           # sign-in is remembered; sessions are not
+        self.assertEqual(callc("/api/masters", cookie=ck)[0], 401)
+        s, r, ck = callc("/api/auth/login", {"username": "father", "password": "1234"}); self.assertEqual(s, 200)
+        self.assertEqual(callc("/api/auth/disable", {"password": "wrong"}, ck)[0], 400)
+        self.assertEqual(callc("/api/auth/disable", {"password": "1234"}, ck)[0], 200)
+        self.assertEqual(callc("/api/masters")[0], 200)
+
+    def test_protected_second_copy_roundtrip(self):
+        drive = self.data / "Drive"
+        self.assertEqual(call("/api/settings/save", {"copy_dir": str(drive), "copy_password": "abc"})[0], 400)      # too short
+        self.assertEqual(call("/api/settings/save", {"copy_dir": str(drive), "copy_password": "secret1"})[0], 200)
+        L = ledger_ids(); self.assertEqual(pay(L, "42.00")[0], 200)
+        s, r = call("/api/backup/create", {}); self.assertEqual(s, 200); self.assertEqual(r["copy_error"], "")
+        files = list(drive.glob("homeledger-*.hlbk")); self.assertEqual(len(files), 1)
+        self.assertFalse(list(drive.glob("homeledger-*.db")))                    # nothing readable was left in the folder
+        self.assertNotIn(b"SQLite format 3", files[0].read_bytes()[:64])
+        self.assertEqual(pay(L, "58.00")[0], 200)                                # entered after the copy was made
+        self.assertEqual(call("/api/backup/restore_file", {"path": str(files[0]), "password": "wrong"})[0], 400)
+        self.assertEqual(call("/api/backup/restore_file", {"path": str(files[0]), "password": "secret1"})[0], 200)
+        rows = call("/api/daybook?from=2026-04-01&to=2027-03-31")[1]["rows"]
+        self.assertEqual(len(rows), 1)                                           # back to how it was when the copy was made
 
 
 if __name__ == "__main__":
