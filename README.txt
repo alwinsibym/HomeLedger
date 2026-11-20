@@ -68,3 +68,13 @@ When the window is closed the program finishes by itself and makes a backup.
  - Text too small? Utilities > Settings > Text size.
  - Run_Tests.bat runs the built-in self-tests (for whoever maintains it).
  - If something ever fails to start, give the file  %LOCALAPPDATA%\HomeLedger\logs\homeledger.log  to the person who set it up.
+
+
+SIGN-IN AND BACKUP PASSWORD (new in 1.2)
+----------------------------------
+Utilities > Security: turn on a user name + password (or a short PIN). It asks every time HomeLedger opens,
+locks itself when idle (Ctrl+L locks at once), and allows 'view only' users. Write down the RECOVERY KEY shown once:
+it is the only way back in if the password is forgotten.
+Utilities > Backup & Restore: you can password-protect the second copy (use this for Google Drive / OneDrive folders).
+KEEP THAT PASSWORD SAFE. Protected copies end in .hlbk and are restored from the same screen.
+The bar at the bottom shows: Saved, Last backup, Second copy, Offline.
