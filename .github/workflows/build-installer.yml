@@ -1,0 +1,55 @@
+name: Build Windows installer
+
+on:
+  workflow_dispatch:        # the "Run workflow" button on GitHub
+  push:
+    tags: ["v*"]            # or: publish a version tag such as v1.3.0
+
+permissions:
+  contents: write           # lets the tag build attach the installer to a Release
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run the automated tests on Windows
+        run: python -m unittest tests.test_core
+
+      - name: Run the program-level tests on Windows (reported, does not block the build)
+        run: python -m unittest tests.test_integration
+        continue-on-error: true
+
+      - name: Package the program
+        run: |
+          python -m pip install pyinstaller
+          python -m PyInstaller --noconfirm --clean --windowed --name HomeLedger --icon homeledger.ico --add-data "homeledger/static;homeledger/static" HomeLedger.pyw
+
+      - name: Read the version number
+        id: v
+        shell: pwsh
+        run: |
+          $v = (Select-String -Path homeledger/config.py -Pattern 'VERSION = "(.+)"').Matches.Groups[1].Value
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Build Setup.exe
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ steps.v.outputs.version }}" installer\HomeLedger.iss
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HomeLedger-Setup
+          path: installer_out/*.exe
+
+      - name: Attach to the Release (tag builds only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: installer_out/*.exe

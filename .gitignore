@@ -14,3 +14,4 @@ __pycache__/
 *.zip
 .vscode/
 Thumbs.db
+installer_out/
