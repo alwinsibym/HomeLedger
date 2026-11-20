@@ -1,0 +1,16 @@
+# Never upload accounting data, backups, logs or build output
+*.db
+*.db-wal
+*.db-shm
+*.sqlite*
+backups/
+logs/
+window-profile/
+dist/
+build/
+*.spec
+__pycache__/
+*.pyc
+*.zip
+.vscode/
+Thumbs.db
