@@ -279,3 +279,46 @@ table.tbl tr.row { display: table-row; flex-wrap: nowrap; gap: 0; }
 #status .right { display: flex; gap: 1.1rem; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 #status .dot.ok { color: var(--good); font-weight: 600; } #status .bad { color: var(--bad); font-weight: 600; } #status .warnt { color: #8a5a00; }
 @media print { #lock { display: none !important; } }
+
+/* ====== TallyPrime look (default). Classic = the rules above, unchanged. ====== */
+#menubar { display: none; }
+html[data-look="prime"] {
+  --bg: #f1f4f8; --paper: #ffffff; --paper-2: #f6f8fb; --line: #d3dae5; --line-soft: #e7ecf2; --grid: #e3e8ef;
+  --bar: #0a4a86; --accent: #0a58a6; --hi: #dbeafb; --hi-ink: #0a2f57; --btn: #ffffff; --btn-line: #c2cddb; --btn-key: #0a58a6;
+  --surface-gap: #ffffff;
+}
+html[data-look="prime"] #menubar { display: flex; align-items: center; gap: .1rem; flex: none; background: var(--paper); border-bottom: 1px solid var(--line); padding: 0 .6rem; }
+html[data-look="prime"] #menubar .spacer { flex: 1; }
+html[data-look="prime"] #menubar button { background: none; border: 0; border-bottom: 3px solid transparent; padding: .5rem .8rem .4rem; cursor: pointer; color: var(--ink); font: inherit; font-size: .95em; }
+html[data-look="prime"] #menubar button u { text-decoration: none; font-weight: 700; color: var(--accent); }
+html[data-look="prime"] #menubar button:hover, html[data-look="prime"] #menubar button:focus-visible { background: var(--hi); color: var(--hi-ink); border-bottom-color: var(--accent); outline: none; }
+html[data-look="prime"] #top { padding: .4rem .9rem; box-shadow: 0 1px 0 rgba(0,0,0,.15); }
+html[data-look="prime"] #top .brand { font-weight: 600; }
+html[data-look="prime"] #keys { background: var(--paper); border-left: 1px solid var(--line); gap: .3rem; padding: .7rem .6rem; }
+html[data-look="prime"] #keys button, html[data-look="prime"] .kbtn { border-radius: 6px; border-color: var(--line); background: var(--paper); box-shadow: 0 1px 0 rgba(10,50,100,.06); }
+html[data-look="prime"] #keys button:hover, html[data-look="prime"] .kbtn:hover { background: var(--hi); color: var(--hi-ink); border-color: var(--accent); }
+html[data-look="prime"] #keys .k, html[data-look="prime"] .kbtn .k { color: var(--accent); }
+html[data-look="prime"] #status { background: var(--paper); }
+html[data-look="prime"] .panel, html[data-look="prime"] .period, html[data-look="prime"] .two, html[data-look="prime"] table.tbl { border-radius: 8px; border-color: var(--line); }
+html[data-look="prime"] .gate { border-radius: 10px; box-shadow: 0 4px 18px rgba(10,50,100,.10); }
+html[data-look="prime"] .gate .hd { background: var(--paper); color: var(--accent); border-bottom: 1px solid var(--line); font-size: 1.05rem; padding: .7rem .9rem; }
+html[data-look="prime"] .menu li.i { padding: .42rem 1rem; border-left: 3px solid transparent; }
+html[data-look="prime"] .menu li.i.sel, html[data-look="prime"] .menu li.i:hover { border-left-color: var(--accent); }
+html[data-look="prime"] .menu li.i .hot { color: var(--accent); }
+html[data-look="prime"] table.tbl th { background: var(--paper-2); border-bottom: 1px solid var(--line); color: var(--ink-2); font-weight: 600; font-size: .92em; }
+html[data-look="prime"] table.tbl td { border-bottom-color: var(--line-soft); }
+html[data-look="prime"] input[type=text], html[data-look="prime"] input[type=search], html[data-look="prime"] input[type=number], html[data-look="prime"] input[type=password], html[data-look="prime"] select, html[data-look="prime"] textarea { border-radius: 6px; }
+html[data-look="prime"] input:focus, html[data-look="prime"] select:focus, html[data-look="prime"] textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; }
+@media (prefers-color-scheme: dark) { html[data-look="prime"]:not([data-theme="light"]) #menubar button:hover { color: #fff; } }
+
+/* Go To */
+.modal.goto { width: min(36rem, 94vw); }
+.modal.goto .mh { display: none; }
+.goto-in { width: 100%; font-size: 1.05rem; padding: .55rem .7rem; }
+.goto-list { list-style: none; margin: .5rem 0 0; padding: 0; max-height: 22rem; overflow: auto; }
+.goto-list li { display: flex; gap: .8rem; justify-content: space-between; padding: .42rem .7rem; border-radius: 6px; cursor: pointer; }
+.goto-list li.on { background: var(--hi); color: var(--hi-ink); }
+.goto-list .gh { color: var(--ink-3); font-size: .85em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.goto-list li.on .gh { color: var(--hi-ink); }
+.goto-list li.none { cursor: default; color: var(--ink-3); }
+@media print { #menubar { display: none !important; } }

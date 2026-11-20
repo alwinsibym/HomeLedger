@@ -207,7 +207,9 @@ HL.screens.utilities = {
     } else if (tab === "settings") {
       const size = h("select", { "aria-label": "Text size" }, [["normal", "Normal"], ["large", "Large (default)"], ["xlarge", "Extra large"]].map(([v, l]) => h("option", { value: v }, l))); size.value = st.text_size;
       size.onchange = async () => { try { await HL.post("/api/settings/save", { text_size: size.value }); st.text_size = size.value; applySize(); say("Text size changed.", "ok"); } catch (e) { fail(e); } };
-      root.append(h("div", { class: "panel", style: "padding:.9rem;max-width:34rem" }, h("label", { class: "f" }, "Text size", size), h("div", { class: "row", style: "margin-top:.8rem" }, h("button", { class: "btn", onclick: () => HL.go("company") }, "Company name and books beginning date")), h("p", { class: "muted" }, "Data folder: " + st.data_dir + " \u00b7 Version " + st.version)));
+      const look = h("select", { "aria-label": "Look" }, h("option", { value: "prime" }, "TallyPrime style (clean, default)"), h("option", { value: "classic" }, "Classic (Tally ERP 9 style)")); look.value = st.look || "prime";
+      look.onchange = async () => { try { await HL.post("/api/settings/save", { look: look.value }); st.look = look.value; HL.applyLook(look.value); say("Look changed.", "ok"); } catch (e) { fail(e); } };
+      root.append(h("div", { class: "panel", style: "padding:.9rem;max-width:34rem" }, h("label", { class: "f" }, "Text size", size), h("label", { class: "f", style: "margin-top:.6rem" }, "Look", look), h("div", { class: "row", style: "margin-top:.8rem" }, h("button", { class: "btn", onclick: () => HL.go("company") }, "Company name and books beginning date")), h("p", { class: "muted" }, "Data folder: " + st.data_dir + " \u00b7 Version " + st.version)));
     } else {
       const r = await HL.get("/api/audit", { limit: 300 });
       const t = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, ["When", "What", "On", "Details"].map(x => h("th", {}, x)))));

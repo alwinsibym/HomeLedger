@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body class="sz-large">
+<script>try{document.documentElement.dataset.look=localStorage.getItem("hl-look")||"prime"}catch(e){document.documentElement.dataset.look="prime"}</script>
 <div id="print-head" aria-hidden="true"><img src="logo.png" alt="HomeLedger"><div class="ph-text"><b id="ph-company"></b><div id="ph-title"></div><div id="ph-date"></div></div></div>
 <div id="top">
   <img class="brand-icon" src="icon.png" alt=""><span class="brand">HomeLedger</span>
@@ -19,6 +20,16 @@
   <span class="spacer"></span>
   <input type="search" id="qsearch" placeholder="Search entries (Ctrl+F)" aria-label="Search entries">
   <span class="clock" id="clock"></span>
+</div>
+<div id="menubar" role="menubar" aria-label="Menu">
+  <button type="button" data-a="goto"><u>G</u>: Go To</button>
+  <button type="button" data-a="company"><u>K</u>: Company</button>
+  <button type="button" data-a="data"><u>Y</u>: Data</button>
+  <button type="button" data-a="export"><u>E</u>: Export</button>
+  <button type="button" data-a="print"><u>P</u>: Print</button>
+  <button type="button" data-a="lock" id="mb-lock" style="display:none"><u>L</u>: Lock</button>
+  <span class="spacer"></span>
+  <button type="button" data-a="help">F1: Help</button>
 </div>
 <div id="main">
   <div id="screen" tabindex="-1"></div>
@@ -33,6 +44,7 @@
 <script src="screens_b.js"></script>
 <script src="screens_c.js"></script>
 <script src="auth.js"></script>
+<script src="goto.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

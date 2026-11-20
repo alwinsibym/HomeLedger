@@ -252,6 +252,8 @@ async function loadMasters() {
   HL.S.masters = await HL.get("/api/masters");
   HL.S.status = await HL.get("/api/status");
   HL.updateStatusBar && HL.updateStatusBar();
+  HL.applyLook && HL.applyLook(HL.S.status.look);
+  const lk = document.getElementById("mb-lock"); if (lk) lk.style.display = HL.auth && HL.auth.enabled ? "" : "none";
   return HL.S.masters;
 }
 

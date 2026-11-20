@@ -205,14 +205,14 @@ def r_status(app, q, b):
     try:
         company = dbm.get_company(c)
         backups = bk.list_backups(app.backup_dir)
-        st = {k: dbm.get_setting(c, k, "") for k in ("copy_dir", "text_size", "last_backup", "last_external_copy")}
+        st = {k: dbm.get_setting(c, k, "") for k in ("copy_dir", "text_size", "last_backup", "last_external_copy", "look")}
         return {"version": config.VERSION, "today": app.today(), "company": company,
                 "notice": app.notice, "backup_count": len(backups),
                 "last_backup": st["last_backup"] or (backups[0]["when"] if backups else ""),
                 "copy_dir": st["copy_dir"], "default_copy_dir": config.default_copy_dir(),
                 "last_external_copy": st["last_external_copy"], "copy_error": app.last_copy_error,
                 "text_size": st["text_size"] or "large", "data_dir": str(config.data_dir()),
-                "copy_protected": bool(dbm.get_setting(c, "copy_password", "")), "auth_on": app.auth_on}
+                "look": st["look"] or "prime", "copy_protected": bool(dbm.get_setting(c, "copy_password", "")), "auth_on": app.auth_on}
     finally:
         c.close()
 
@@ -309,6 +309,10 @@ def r_settings_save(app, q, b):
                 if b["text_size"] not in ("normal", "large", "xlarge"):
                     raise UserError("Unknown text size.")
                 dbm.set_setting(c, "text_size", b["text_size"])
+            if "look" in b:
+                if b["look"] not in ("prime", "classic"):
+                    raise UserError("Unknown look.")
+                dbm.set_setting(c, "look", b["look"])
             if "copy_dir" in b:
                 folder = str(b["copy_dir"] or "").strip()
                 if folder:
