@@ -9,7 +9,21 @@ from pathlib import Path
 
 from .errors import CorruptDatabase, UserError
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+
+SCHEMA_V2 = """
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    role TEXT NOT NULL CHECK (role IN ('owner','viewer')),
+    salt BLOB NOT NULL,
+    hash BLOB NOT NULL,
+    iters INTEGER NOT NULL,
+    failed INTEGER NOT NULL DEFAULT 0,
+    locked_until REAL NOT NULL DEFAULT 0,
+    created TEXT NOT NULL
+)
+"""
 
 SCHEMA_V1 = """
 CREATE TABLE company (
@@ -327,6 +341,7 @@ def _create_fresh(path, today=None) -> None:
             for stmt in SCHEMA_V1.split(";"):
                 if stmt.strip():
                     conn.execute(stmt)
+            conn.execute(SCHEMA_V2)
             _seed(conn, today or dt.date.today())
             conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     finally:
@@ -374,7 +389,14 @@ def init_database(path, log=None) -> None:
         # Safety copy before any upgrade
         stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
         shutil.copy2(path, path.with_name(f"homeledger-before-upgrade-{stamp}.db"))
-        # (future migrations go here: if ver < 2: ...)
+        conn = connect(path)
+        try:
+            with write_tx(conn):
+                if ver < 2:
+                    conn.execute(SCHEMA_V2)
+                conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        finally:
+            conn.close()
 
 
 def get_company(conn) -> dict:
