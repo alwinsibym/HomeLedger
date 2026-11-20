@@ -1,0 +1,217 @@
+/* Screens, part 3: masters, opening balances, utilities, company, quit */
+"use strict";
+
+/* ---------- ledger create / alter form (modal) ---------- */
+HL.ledgerForm = function ({ id, name, onsaved }) {
+  const L = id ? M().ledgers.find(l => l.id === id) : null;
+  const nm = h("input", { type: "text", value: L ? L.name : (name || ""), maxlength: "60", "aria-label": "Ledger name" });
+  const grp = picker({ options: () => groupOptions(), value: L ? L.group_id : null, placeholder: "Choose a group (e.g. Household Expenses)", width: "100%" });
+  const op = h("input", { type: "text", inputmode: "decimal", class: "amt", value: L && L.opening_paise ? (L.opening_paise / 100).toFixed(2) : "", "aria-label": "Opening balance" });
+  const ot = h("select", { "aria-label": "Dr or Cr" }, h("option", { value: "Dr" }, "Dr (you have / are owed)"), h("option", { value: "Cr" }, "Cr (you owe)")); ot.value = L ? L.opening_type : "Dr";
+  const cc = picker({ options: () => ccOptions(true), value: L ? L.default_cc_id : null, placeholder: "None", width: "100%" });
+  const act = h("input", { type: "checkbox", checked: L ? !!L.is_active : true });
+  const notes = h("input", { type: "text", value: L ? L.notes : "", maxlength: "300", "aria-label": "Notes" });
+  const body = h("div", { class: "fgrid", style: "grid-template-columns:1fr" },
+    h("label", { class: "f" }, "Name", nm), h("label", { class: "f" }, "Under group", grp.el),
+    h("div", { class: "row" }, h("label", { class: "f" }, "Opening balance (only for cash, bank, loans, land, etc.)", h("span", { class: "row" }, op, ot))),
+    h("label", { class: "f" }, "Usual activity (auto-filled in vouchers)", cc.el), h("label", { class: "f" }, "Notes", notes),
+    L ? h("label", { class: "f", style: "flex-direction:row;gap:.4rem;align-items:center" }, act, "Active (untick to hide from lists)") : "");
+  enterAsTab(body, () => doSave());
+  let m;
+  async function doSave() {
+    try {
+      const res = await HL.post("/api/ledger/save", { id, name: nm.value, group_id: grp.value, opening: op.value, opening_type: ot.value, default_cc_id: cc.value, is_active: act.checked, notes: notes.value });
+      m.close(); say("Ledger saved.", "ok"); await loadMasters(); onsaved && onsaved(res.id);
+    } catch (e) { fail(e); }
+  }
+  m = modal({ title: L ? "Ledger Alteration" : "Ledger Creation", body, focus: "input",
+    buttons: [{ label: "Cancel (Esc)", onclick: m => m.close() }, { label: "Accept (Ctrl+A)", cls: "primary", onclick: doSave }] });
+  m.box.addEventListener("keydown", e => { if (e.ctrlKey && e.key.toLowerCase() === "a") { e.preventDefault(); doSave(); } });
+  return m;
+};
+
+/* ---------- masters ---------- */
+HL.screens.masters = {
+  title: "Masters",
+  async render(sc, params) {
+    await loadMasters();
+    const tab = params.tab || "ledgers";
+    const tabs = h("div", { class: "chips", style: "margin-bottom:.8rem" }, [["ledgers", "Ledgers"], ["groups", "Groups"], ["activities", "Activities"]].map(([k, l]) => h("button", { class: "chip" + (tab === k ? " on" : ""), type: "button", onclick: () => { HL.cur.params = { tab: k }; HL.refresh(); } }, l)));
+    const root = h("div", {}, h("h1", { class: "title" }, "Masters"), h("p", { class: "sub" }, "Ledgers are your accounts (Cash, Groceries, Rubber Sales...). Groups collect ledgers. Activities tag entries to farm or household work."), tabs);
+    let keys = [BACK];
+    if (tab === "ledgers") {
+      const filt = h("input", { type: "search", placeholder: "Filter ledgers...", "aria-label": "Filter", style: "min-width:16rem" });
+      const showOff = h("input", { type: "checkbox" });
+      const t = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, ["Ledger", "Group", "Used", "Balance now"].map((x, i) => h("th", { class: i > 1 ? "r" : "" }, x)))));
+      const tb = h("tbody", {}); t.append(tb);
+      const trs = [];
+      M().ledgers.forEach(l => {
+        const tr = h("tr", { class: "row", tabindex: "0", "data-t": (l.name + " " + l.group_name).toLowerCase(), "data-off": l.is_active ? "" : "1", onclick: () => HL.ledgerForm({ id: l.id, onsaved: () => HL.refresh() }) },
+          h("td", {}, l.name, l.is_active ? "" : h("span", { class: "tag", style: "margin-left:.5rem" }, "hidden")), h("td", {}, l.group_name), h("td", { class: "r" }, l.n_entries || ""), h("td", { class: "r" }, l.balance_paise == null ? "" : bal(l.balance_paise)));
+        rowKeys(tr); trs.push(tr); tb.append(tr);
+      });
+      const apply = () => { const q = filt.value.toLowerCase().trim(); trs.forEach(tr => tr.style.display = (!q || tr.dataset.t.includes(q)) && (showOff.checked || !tr.dataset.off) ? "" : "none"); };
+      filt.addEventListener("input", apply); showOff.addEventListener("change", apply); apply();
+      root.append(h("div", { class: "row", style: "margin-bottom:.6rem" }, filt, h("label", {}, showOff, " Show hidden ledgers")), h("div", { class: "scroll" }, t));
+      keys.push({ k: "Alt+C", label: "Create ledger", fn: () => HL.ledgerForm({ onsaved: () => HL.refresh() }) }, { k: "", label: "Delete selected", fn: async () => {
+        const tr = document.activeElement.closest && document.activeElement.closest("tr.row"); const i = trs.indexOf(tr); if (i < 0) { say("Select a ledger row first (arrow keys).", "err"); return; }
+        const l = M().ledgers[i];
+        if (await confirmBox("Delete ledger?", "Delete '" + l.name + "'? This only works for ledgers that have never been used.", "Delete", true)) { try { await HL.post("/api/ledger/delete", { id: l.id }); say("Deleted.", "ok"); HL.refresh(); } catch (e) { fail(e); } }
+      } });
+      HL.onKey = e => { if (e.altKey && e.key.toLowerCase() === "c") { e.preventDefault(); HL.ledgerForm({ onsaved: () => HL.refresh() }); return true; } };
+    } else if (tab === "groups") {
+      const t = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, ["Group", "Kind", ""].map(x => h("th", {}, x)))));
+      const tb = h("tbody", {}); t.append(tb);
+      const byP = {}; M().groups.forEach(g => (byP[g.parent_id || 0] ||= []).push(g));
+      const nat = { asset: "Assets", liability: "Liabilities", income: "Income", expense: "Expenses" };
+      const add = (g, d) => { const tr = h("tr", { class: g.is_system ? "" : "row", tabindex: g.is_system ? null : "0", onclick: g.is_system ? null : () => editGroup(g) }, h("td", { class: "ind" + d }, g.name), h("td", {}, nat[g.nature]), h("td", {}, g.is_system ? h("span", { class: "tag" }, "built in") : h("span", { class: "tag" }, "yours"))); if (!g.is_system) rowKeys(tr); tb.append(tr); (byP[g.id] || []).forEach(c => add(c, Math.min(d + 1, 3))); };
+      (byP[0] || []).forEach(g => add(g, 0));
+      root.append(h("div", { class: "scroll" }, t));
+      const editGroup = g => {
+        const nmI = h("input", { type: "text", value: g ? g.name : "", maxlength: "60", "aria-label": "Group name" });
+        const par = picker({ options: () => groupOptions(), value: g ? g.parent_id : null, placeholder: "Which group does it belong to?", width: "100%" });
+        const body = h("div", { class: "fgrid", style: "grid-template-columns:1fr" }, h("label", { class: "f" }, "Group name", nmI), g ? "" : h("label", { class: "f" }, "Belongs under", par.el));
+        const m = modal({ title: g ? "Group Alteration" : "Group Creation", body, buttons: [g ? { label: "Delete", cls: "danger", onclick: async m2 => { if (await confirmBox("Delete group?", "Only empty groups can be deleted.", "Delete", true)) { try { await HL.post("/api/group/delete", { id: g.id }); m2.close(); HL.refresh(); } catch (e) { fail(e); } } } } : null, { label: "Cancel", onclick: m => m.close() }, { label: "Accept", cls: "primary", onclick: save }].filter(Boolean) });
+        enterAsTab(body, save);
+        async function save() { try { await HL.post("/api/group/save", { id: g && g.id, name: nmI.value, parent_id: par.value }); m.close(); await loadMasters(); HL.refresh(); } catch (e) { fail(e); } }
+      };
+      keys.push({ k: "Alt+C", label: "Create group", fn: () => editGroup(null) });
+    } else {
+      const t = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, ["Activity", "Belongs to", "Kind"].map(x => h("th", {}, x)))));
+      const tb = h("tbody", {}); t.append(tb);
+      const byP = {}; M().cost_centres.forEach(c => (byP[c.parent_id || 0] ||= []).push(c));
+      const nameOf = id => (M().cost_centres.find(c => c.id === id) || {}).name || "";
+      const editCc = c => {
+        const nmI = h("input", { type: "text", value: c ? c.name : "", maxlength: "60", "aria-label": "Activity name" });
+        const par = picker({ options: () => M().cost_centres.filter(x => !x.parent_id).map(x => ({ value: x.id, label: x.name })), value: c ? c.parent_id : null, placeholder: "Household or Farm", width: "100%" });
+        const act = h("input", { type: "checkbox", checked: c ? !!c.is_active : true });
+        const body = h("div", { class: "fgrid", style: "grid-template-columns:1fr" }, h("label", { class: "f" }, "Activity name (e.g. Coconut, Poultry)", nmI), c ? "" : h("label", { class: "f" }, "Belongs to", par.el), c ? h("label", { class: "f", style: "flex-direction:row;gap:.4rem;align-items:center" }, act, "Active") : "");
+        const m = modal({ title: c ? "Activity Alteration" : "Activity Creation", body, buttons: [c && c.parent_id ? { label: "Delete", cls: "danger", onclick: async m2 => { if (await confirmBox("Delete activity?", "Only activities that were never used can be deleted. Otherwise untick Active.", "Delete", true)) { try { await HL.post("/api/cc/delete", { id: c.id }); m2.close(); await loadMasters(); HL.refresh(); } catch (e) { fail(e); } } } } : null, { label: "Cancel", onclick: m => m.close() }, { label: "Accept", cls: "primary", onclick: save }].filter(Boolean) });
+        enterAsTab(body, save);
+        async function save() { try { await HL.post("/api/cc/save", { id: c && c.id, name: nmI.value, parent_id: par.value, is_active: act.checked }); m.close(); await loadMasters(); HL.refresh(); } catch (e) { fail(e); } }
+      };
+      const add = (c, d) => { const tr = h("tr", { class: "row", tabindex: "0", onclick: () => editCc(c) }, h("td", { class: "ind" + d }, c.name, c.is_active ? "" : h("span", { class: "tag", style: "margin-left:.5rem" }, "hidden")), h("td", {}, nameOf(c.parent_id)), h("td", {}, c.kind === "farm" ? "Farm" : "Household")); rowKeys(tr); tb.append(tr); (byP[c.id] || []).forEach(k => add(k, d + 1)); };
+      (byP[0] || []).forEach(c => add(c, 0));
+      root.append(h("div", { class: "scroll" }, t));
+      keys.push({ k: "Alt+C", label: "Create activity", fn: () => editCc(null) });
+    }
+    sc.replaceChildren(root); const f = $("tbody tr.row", root); f && f.focus(); HL.setKeys(keys);
+  },
+};
+
+/* ---------- opening balances ---------- */
+HL.screens.openings = {
+  title: "Opening Balances",
+  async render(sc) {
+    await loadMasters();
+    const co = HL.S.status.company;
+    const root = h("div", {}, h("h1", { class: "title" }, "Opening Balances"), h("p", { class: "sub" }, "What you had on the books beginning date, " + showDate(co.books_begin) + ". Enter cash in hand, bank balance, loans, land, savings, and money lent or borrowed."));
+    const list = M().ledgers.filter(l => l.nature === "asset" || l.nature === "liability");
+    const t = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, ["Account", "Group", "Amount (\u20b9)", "Dr / Cr"].map((x, i) => h("th", { class: i === 2 ? "r" : "" }, x)))));
+    const tb = h("tbody", {}); t.append(tb);
+    const rows = [], diff = h("span", { class: "num" });
+    const parse = s => { const x = String(s || "").replace(/[,\s\u20b9]/g, ""); return x === "" ? 0 : (/^\d+(\.\d{1,2})?$/.test(x) ? Math.round(parseFloat(x) * 100) : NaN); };
+    const calc = () => { let n = 0; rows.forEach(r => { const a = parse(r.amt.value); if (!isNaN(a)) n += r.typ.value === "Dr" ? a : -a; }); diff.textContent = n === 0 ? "Balanced \u2713" : rs(Math.abs(n)) + (n > 0 ? " more on the Dr side" : " more on the Cr side"); diff.style.color = n === 0 ? "var(--good)" : "var(--bad)"; };
+    list.forEach(l => {
+      const amt = h("input", { type: "text", inputmode: "decimal", class: "amt", value: l.opening_paise ? (l.opening_paise / 100).toFixed(2) : "", "aria-label": l.name + " opening amount" });
+      const typ = h("select", { "aria-label": "Dr or Cr" }, h("option", { value: "Dr" }, "Dr"), h("option", { value: "Cr" }, "Cr")); typ.value = l.opening_type;
+      amt.addEventListener("input", calc); typ.addEventListener("change", calc); amt.addEventListener("focus", () => amt.select());
+      rows.push({ l, amt, typ });
+      tb.append(h("tr", {}, h("td", {}, l.name), h("td", { class: "muted" }, l.group_name), h("td", { class: "r" }, amt), h("td", {}, typ)));
+    });
+    root.append(h("div", { class: "banner" }, h("div", {}, "How it works: assets (cash, bank, land, savings, money you are to receive) are normally ", h("b", {}, "Dr"), "; loans and money you owe are ", h("b", {}, "Cr"), ". Anything left over is your own capital: enter it on the Capital Account line as Cr. The two sides must match.")),
+      h("div", { class: "scroll" }, t), h("div", { class: "row", style: "margin-top:.7rem" }, h("b", {}, "Difference: "), diff));
+    sc.replaceChildren(root); calc(); enterAsTab(root);
+    const save = async () => {
+      try {
+        const items = rows.map(r => ({ ledger_id: r.l.id, amount: r.amt.value, type: r.typ.value }));
+        const res = await HL.post("/api/openings/save", { items }); await loadMasters();
+        say(res.difference_paise === 0 ? "Opening balances saved and balanced." : "Saved, but the two sides differ by " + rs(Math.abs(res.difference_paise)) + ". Put the difference on Capital Account.", res.difference_paise === 0 ? "ok" : "err");
+        HL.refresh();
+      } catch (e) { fail(e); }
+    };
+    HL.onKey = e => { if (e.ctrlKey && e.key.toLowerCase() === "a") { e.preventDefault(); save(); return true; } };
+    HL.setKeys([{ k: "Ctrl+A", label: "Accept (save)", fn: save }, BACK, "sep", { k: "", label: "Create ledger", fn: () => HL.ledgerForm({ onsaved: () => HL.refresh() }) }, { k: "F3", label: "Books begin date", fn: () => HL.go("company") }]);
+    const f = $("input.amt", root); f && f.focus();
+  },
+};
+
+/* ---------- company ---------- */
+HL.screens.company = {
+  title: "Company Info",
+  async render(sc) {
+    await loadMasters();
+    const co = HL.S.status.company;
+    const nm = h("input", { type: "text", value: co.name, maxlength: "80", "aria-label": "Name" }), bb = h("input", { type: "text", value: showDate(co.books_begin), "aria-label": "Books beginning" });
+    const root = h("div", {}, h("h1", { class: "title" }, "Company Info"), h("p", { class: "sub" }, "The name shown at the top, and the date your books begin (opening balances are as on this date)."),
+      h("div", { class: "panel", style: "padding:.9rem;max-width:34rem" }, h("div", { class: "fgrid", style: "grid-template-columns:1fr" }, h("label", { class: "f" }, "Name of the book", nm), h("label", { class: "f" }, "Books beginning from", bb)),
+        h("p", { class: "hint" }, "Financial year runs April to March. If you will copy older notebook entries, set the beginning date to the start of the oldest notebook year."),
+        h("div", { class: "row" }, h("button", { class: "btn primary", onclick: save }, "Accept"))));
+    sc.replaceChildren(root); enterAsTab(root, save); nm.focus();
+    async function save() { try { const iso = parseDateInput(bb.value, co.books_begin); if (!iso) throw new Error("Please type the date like 01-04-2025."); await HL.post("/api/company/save", { name: nm.value, books_begin: iso }); await loadMasters(); $("#company").textContent = HL.S.status.company.name; say("Saved.", "ok"); HL.back(); } catch (e) { fail(e); } }
+    HL.setKeys([{ k: "Enter", label: "Accept", fn: save }, BACK]);
+  },
+};
+
+/* ---------- utilities ---------- */
+HL.screens.utilities = {
+  title: "Utilities",
+  async render(sc, params) {
+    await loadMasters();
+    const tab = params.tab || "backup";
+    const defs = [["backup", "Backup & Restore"], ["health", "Health Check"], ["export", "Export to Excel"], ["settings", "Settings"], ["audit", "Audit Trail"]];
+    const root = h("div", {}, h("h1", { class: "title" }, "Utilities"), h("div", { class: "chips", style: "margin:.4rem 0 .9rem" }, defs.map(([k, l]) => h("button", { class: "chip" + (tab === k ? " on" : ""), type: "button", onclick: () => { HL.cur.params = { tab: k }; HL.refresh(); } }, l))));
+    const st = HL.S.status;
+    if (tab === "backup") {
+      const b = await HL.get("/api/backups");
+      const copyI = h("input", { type: "text", value: st.copy_dir || "", placeholder: st.default_copy_dir, style: "width:100%", "aria-label": "Second copy folder" });
+      root.append(
+        h("div", { class: "panel", style: "padding:.9rem;margin-bottom:.8rem" }, h("h3", { style: "margin-top:0" }, "Your data is backed up automatically"),
+          h("p", {}, "A safe copy is made each time HomeLedger starts, about hourly while you are entering data, and when you close it. Latest: ", h("b", {}, st.last_backup ? st.last_backup.slice(0, 16) : "none yet"), ". Backups kept here: ", h("b", {}, b.rows.length)),
+          h("p", { class: "muted" }, "Stored in: " + b.dir),
+          h("button", { class: "btn primary", onclick: async e => { e.target.disabled = true; try { const r = await HL.post("/api/backup/create"); say(r.copy_error ? "Backup made, but the second copy failed: " + r.copy_error : "Backup created.", r.copy_error ? "err" : "ok"); await loadMasters(); HL.refresh(); } catch (er) { fail(er); e.target.disabled = false; } } }, "Create backup now")),
+        h("div", { class: "panel", style: "padding:.9rem;margin-bottom:.8rem" }, h("h3", { style: "margin-top:0" }, "Second copy (strongly recommended)"),
+          h("p", {}, "Every backup is also copied to this folder. Choose a pen drive, an external disk, or a OneDrive/Google Drive folder so the data survives if this computer fails."),
+          st.copy_error ? h("div", { class: "banner err" }, "Last attempt failed: " + st.copy_error) : "",
+          h("label", { class: "f" }, "Folder (for example E:\\HomeLedger Backups)", copyI),
+          h("div", { class: "row", style: "margin-top:.5rem" }, h("button", { class: "btn primary", onclick: async () => { try { await HL.post("/api/settings/save", { copy_dir: copyI.value }); await loadMasters(); say(copyI.value.trim() ? "Second copy folder saved." : "Second copy turned off.", "ok"); HL.refresh(); } catch (e) { fail(e); } } }, "Save folder"), st.last_external_copy ? h("span", { class: "muted" }, "Last second copy: " + st.last_external_copy.slice(0, 16)) : "")));
+      const t = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, ["Backup made", "Kind", "Size", ""].map(x => h("th", {}, x)))));
+      const tb = h("tbody", {}); t.append(tb);
+      const kind = { auto: "Automatic", manual: "Manual", "pre-restore": "Before a restore" };
+      b.rows.slice(0, 60).forEach(r => tb.append(h("tr", {}, h("td", {}, r.when.slice(0, 16)), h("td", {}, kind[r.reason] || r.reason), h("td", {}, Math.max(1, Math.round(r.size / 1024)) + " KB"),
+        h("td", { class: "r" }, h("button", { class: "btn", onclick: async () => {
+          if (!(await confirmBox("Restore this backup?", "HomeLedger will go back to how it was on " + r.when.slice(0, 16) + ". Anything entered after that time will be removed from the live book. A backup of the current state is made first, so this can be undone.", "Yes, restore", true))) return;
+          try { await HL.post("/api/backup/restore", { name: r.name }); await loadMasters(); say("Restored.", "ok"); HL.stack = []; HL.cur = { name: "gateway", params: {} }; HL.render(); } catch (e) { fail(e); } } }, "Restore")))));
+      root.append(h("h3", {}, "Backups on this computer"), h("div", { class: "scroll" }, t));
+    } else if (tab === "health") {
+      const r = await HL.get("/api/health");
+      root.append(h("div", { class: "banner " + (r.all_ok ? "ok" : "warn") }, r.all_ok ? "Everything looks healthy." : "Some checks need attention."), h("div", { class: "checks" }, r.checks.map(c => h("div", { class: "ck " + (c.ok ? "ok" : "bad") }, h("b", {}, (c.ok ? "\u2713 " : "\u26a0 ") + c.name), h("span", {}, c.detail)))),
+        h("p", { class: "hint" }, "These checks never change your data."));
+    } else if (tab === "export") {
+      root.append(h("div", { class: "panel", style: "padding:.9rem;max-width:40rem" }, h("h3", { style: "margin-top:0" }, "Export everything to Excel"), h("p", {}, "Downloads one zip file with every entry, ledger, activity and the audit trail as spreadsheets (CSV) that open in Excel. This is a read-only copy for your own records and for sharing with an accountant; to protect your data use Backup."),
+        h("a", { class: "btn primary", href: "/api/export", download: "" }, "Download export (zip)")));
+    } else if (tab === "settings") {
+      const size = h("select", { "aria-label": "Text size" }, [["normal", "Normal"], ["large", "Large (default)"], ["xlarge", "Extra large"]].map(([v, l]) => h("option", { value: v }, l))); size.value = st.text_size;
+      size.onchange = async () => { try { await HL.post("/api/settings/save", { text_size: size.value }); st.text_size = size.value; applySize(); say("Text size changed.", "ok"); } catch (e) { fail(e); } };
+      root.append(h("div", { class: "panel", style: "padding:.9rem;max-width:34rem" }, h("label", { class: "f" }, "Text size", size), h("div", { class: "row", style: "margin-top:.8rem" }, h("button", { class: "btn", onclick: () => HL.go("company") }, "Company name and books beginning date")), h("p", { class: "muted" }, "Data folder: " + st.data_dir + " \u00b7 Version " + st.version)));
+    } else {
+      const r = await HL.get("/api/audit", { limit: 300 });
+      const t = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, ["When", "What", "On", "Details"].map(x => h("th", {}, x)))));
+      const tb = h("tbody", {}); t.append(tb);
+      const pretty = x => { try { const o = JSON.parse(x.detail); if (o.after) return o.after.vtype + " no. " + o.after.number + " dated " + showDate(o.after.date) + ", " + rs(o.after.total_paise); if (o.vtype) return o.vtype + " no. " + o.number + " dated " + showDate(o.date) + ", " + rs(o.total); } catch (e) { } return x.detail; };
+      r.rows.forEach(x => tb.append(h("tr", {}, h("td", {}, x.ts.slice(0, 16)), h("td", {}, x.action), h("td", {}, x.entity + (x.entity_id ? " #" + x.entity_id : "")), h("td", {}, pretty(x)))));
+      root.append(h("p", { class: "sub" }, "A permanent log of every change (newest first). Entries are never silently removed."), h("div", { class: "scroll" }, t));
+    }
+    sc.replaceChildren(root); HL.setKeys([BACK]);
+  },
+};
+
+/* ---------- quit ---------- */
+HL.quit = async function () {
+  if (!(await confirmBox("Close HomeLedger?", "Your data is saved. A backup will be made as the program closes.", "Yes, close"))) return;
+  try { await HL.post("/api/quit"); } catch (e) { /* server may already be gone */ }
+  HL._lost = true;
+  document.body.innerHTML = '<div style="font-family:sans-serif;padding:3rem;text-align:center"><h2>HomeLedger has closed.</h2><p>Your data is saved and backed up. You can close this window.</p></div>';
+  setTimeout(() => window.close(), 400);
+};
+function applySize() { document.body.className = "sz-" + ((HL.S.status && HL.S.status.text_size) || "large"); }
