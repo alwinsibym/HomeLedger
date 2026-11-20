@@ -36,9 +36,12 @@ class Proc:
         env = dict(os.environ, HOMELEDGER_DATA=str(data), HOMELEDGER_PORT=str(PORT))
         self.p = subprocess.Popen([sys.executable, "-I", str(ROOT / "HomeLedger.pyw"), "--no-window"], env=env,
                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        t0 = time.time()
         for _ in range(100):
             try:
-                if call("/api/ping")[0] == 200: return
+                if call("/api/ping")[0] == 200:
+                    if os.environ.get("HL_TEST_TIMING"): print(f"   [start took {time.time() - t0:.1f}s]", file=sys.stderr)
+                    return
             except Exception: time.sleep(0.1)
         raise RuntimeError("server did not start: " + (self.p.stdout.read(2000).decode() if self.p.poll() is not None else ""))
 
@@ -46,10 +49,12 @@ class Proc:
         self.p.kill(); self.p.wait()          # hard kill on every OS (TerminateProcess on Windows, SIGKILL elsewhere)
 
     def stop(self):
+        t0 = time.time(); forced = False
         try: call("/api/quit", {})
         except Exception: pass
         try: self.p.wait(timeout=15)
-        except Exception: self.p.kill()
+        except Exception: self.p.kill(); forced = True
+        if os.environ.get("HL_TEST_TIMING"): print(f"   [quit took {time.time() - t0:.1f}s{' (had to be forced)' if forced else ''}]", file=sys.stderr)
 
 
 def ledger_ids():
