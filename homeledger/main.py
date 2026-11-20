@@ -35,7 +35,7 @@ def setup_logging():
 
 def ping(port: int) -> bool:
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/ping", timeout=1.5) as r:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/ping", timeout=1.0) as r:
             return json.loads(r.read()).get("app") == "HomeLedger"
     except Exception:
         return False
@@ -96,12 +96,18 @@ def run(argv=None) -> int:
     setup_logging()
     log = logging.getLogger("homeledger")
 
-    # already running? just bring up a window
-    for port in range(config.DEFAULT_PORT, config.DEFAULT_PORT + config.PORT_RANGE):
-        if ping(port):
-            if not no_window:
-                open_window(f"http://127.0.0.1:{port}/")
-            return 0
+    # already running? just bring up a window.
+    # The running copy leaves its port in port.txt. Looking only there keeps start-up instant: on Windows,
+    # asking ports that nobody is using can take over a second EACH, which made start-up crawl.
+    port_file = config.data_dir() / "port.txt"
+    try:
+        known = int(port_file.read_text().strip())
+    except (OSError, ValueError):
+        known = None
+    if known and ping(known):
+        if not no_window:
+            open_window(f"http://127.0.0.1:{known}/")
+        return 0
 
     db_file = config.db_path()
     backups = config.backup_dir()
@@ -160,6 +166,10 @@ def run(argv=None) -> int:
             log.exception("start-up backup failed")
     threading.Thread(target=startup_backup, daemon=True).start()
     url = f"http://127.0.0.1:{port}/"
+    try:
+        port_file.write_text(str(port))
+    except OSError:
+        log.warning("could not write port.txt")
     log.info("HomeLedger %s serving %s (data: %s) - ready %.2f s after start", config.VERSION, url, db_file,
              time.time() - T0)
     if not no_window:
@@ -170,6 +180,11 @@ def run(argv=None) -> int:
         app.shutdown()
     finally:
         httpd.server_close()
+        try:
+            if port_file.read_text().strip() == str(port):
+                port_file.unlink()
+        except OSError:
+            pass
     log.info("HomeLedger stopped")
     return 0
 
