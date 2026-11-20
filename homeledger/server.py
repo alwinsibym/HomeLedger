@@ -1,0 +1,568 @@
+"""Local web server. Listens on 127.0.0.1 only; nothing is reachable from the network."""
+from __future__ import annotations
+
+import csv
+import datetime as dt
+import io
+import json
+import logging
+import mimetypes
+import os
+import socket
+import sqlite3
+import threading
+import time
+import traceback
+import zipfile
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import parse_qs, urlparse
+
+from . import backup as bk
+from . import config
+from . import db as dbm
+from . import reports as rp
+from . import service as sv
+from .errors import UserError
+
+log = logging.getLogger("homeledger")
+
+GRACE_SECONDS = 240         # fallback: a hidden/minimised window may answer slowly, so wait a long time
+CLOSE_SECONDS = 8           # after the window says it is closing, wait this long for a reload before stopping
+FIRST_PING_SECONDS = 180    # if no window ever connects, quit
+SNAPSHOT_EVERY = 3600       # automatic snapshot at most hourly while entries are being made
+
+
+class App:
+    def __init__(self, db_file: Path, backup_dir: Path):
+        self.db_file = db_file
+        self.backup_dir = backup_dir
+        self.lock = threading.RLock()
+        self.started = time.time()
+        self.last_ping = time.time()
+        self.had_ping = False
+        self.closing_at = None
+        self.notice = None
+        self.httpd = None
+        self.stopping = False
+        self._snap_busy = False
+        self.last_auto = 0.0
+        self.last_copy_error = ""
+        self.dirty = False   # entries changed since the last backup
+        for b in bk.list_backups(backup_dir):
+            if b["reason"] == "auto":
+                self.last_auto = max(self.last_auto, dt.datetime.fromisoformat(b["when"]).timestamp())
+
+    # -- helpers ----------------------------------------------------------
+    def conn(self):
+        return dbm.connect(self.db_file)
+
+    @staticmethod
+    def today() -> str:
+        return dt.date.today().isoformat()
+
+    # -- backups ----------------------------------------------------------
+    def snapshot(self, reason="auto") -> dict:
+        path = bk.make_snapshot(self.db_file, self.backup_dir, reason)
+        self.dirty = False
+        if reason == "auto":
+            self.last_auto = time.time()
+        info = {"name": path.name, "copy_error": ""}
+        c = self.conn()
+        try:
+            folder = dbm.get_setting(c, "copy_dir", "")
+            if folder:
+                try:
+                    bk.copy_to(path, folder)
+                    dbm.set_setting(c, "last_external_copy", dbm.now_iso())
+                    self.last_copy_error = ""
+                except Exception as e:  # drive unplugged, folder missing...
+                    self.last_copy_error = f"{e}"
+                    info["copy_error"] = self.last_copy_error
+                    log.warning("second copy failed: %s", e)
+            dbm.set_setting(c, "last_backup", dbm.now_iso())
+        finally:
+            c.close()
+        try:
+            bk.rotate(self.backup_dir)
+        except Exception:
+            log.exception("rotation failed")
+        return info
+
+    def maybe_snapshot(self, force_daily=False):
+        if self._snap_busy or time.time() - self.last_auto < SNAPSHOT_EVERY:
+            return
+        self._snap_busy = True
+
+        def run():
+            try:
+                with self.lock:
+                    self.snapshot("auto")
+            except Exception:
+                log.exception("automatic backup failed")
+            finally:
+                self._snap_busy = False
+        threading.Thread(target=run, daemon=True).start()
+
+    def final_backup(self):
+        try:
+            if self.dirty:      # something was entered since the last backup
+                with self.lock:
+                    self.snapshot("auto")
+        except Exception:
+            log.exception("backup on exit failed")
+
+    # -- lifecycle ----------------------------------------------------------
+    def shutdown(self):
+        if self.stopping:
+            return
+        self.stopping = True
+        self.final_backup()
+        if self.httpd:
+            self.httpd.shutdown()
+
+    def watchdog(self):
+        last_tick = time.time()
+        while not self.stopping:
+            time.sleep(2)
+            now = time.time()
+            if now - last_tick > 15:  # the computer was asleep: give the window time to wake up
+                self.last_ping = now
+            last_tick = now
+            if self.closing_at and self.last_ping < self.closing_at and now - self.closing_at > CLOSE_SECONDS:
+                log.info("window closed - shutting down")
+                threading.Thread(target=self.shutdown, daemon=True).start()
+                return
+            if self.had_ping and now - self.last_ping > GRACE_SECONDS:
+                log.info("window closed - shutting down")
+                threading.Thread(target=self.shutdown, daemon=True).start()
+                return
+            if not self.had_ping and now - self.started > FIRST_PING_SECONDS:
+                log.info("no window connected - shutting down")
+                threading.Thread(target=self.shutdown, daemon=True).start()
+                return
+
+
+# =============================================================================
+# route handlers  (app, query, body) -> json-able
+# =============================================================================
+GET, POST = {}, {}
+
+
+def route(table, path):
+    def deco(fn):
+        table[path] = fn
+        return fn
+    return deco
+
+
+def _int(q, key, required=False):
+    v = q.get(key)
+    if v in (None, ""):
+        if required:
+            raise UserError("Something is missing in the request.")
+        return None
+    try:
+        return int(v)
+    except ValueError:
+        raise UserError("Invalid request.")
+
+
+@route(GET, "/api/ping")
+def r_ping(app, q, b):
+    app.last_ping = time.time()
+    app.had_ping = True
+    app.closing_at = None
+    return {"app": "HomeLedger", "ok": True, "version": config.VERSION}
+
+
+@route(POST, "/api/closing")
+def r_closing(app, q, b):
+    app.closing_at = time.time()      # the window is closing (or reloading: its next ping cancels this)
+    return {"ok": True}
+
+
+@route(GET, "/api/status")
+def r_status(app, q, b):
+    c = app.conn()
+    try:
+        company = dbm.get_company(c)
+        backups = bk.list_backups(app.backup_dir)
+        st = {k: dbm.get_setting(c, k, "") for k in ("copy_dir", "text_size", "last_backup", "last_external_copy")}
+        return {"version": config.VERSION, "today": app.today(), "company": company,
+                "notice": app.notice, "backup_count": len(backups),
+                "last_backup": st["last_backup"] or (backups[0]["when"] if backups else ""),
+                "copy_dir": st["copy_dir"], "default_copy_dir": config.default_copy_dir(),
+                "last_external_copy": st["last_external_copy"], "copy_error": app.last_copy_error,
+                "text_size": st["text_size"] or "large", "data_dir": str(config.data_dir())}
+    finally:
+        c.close()
+
+
+@route(POST, "/api/notice/dismiss")
+def r_notice(app, q, b):
+    app.notice = None
+    return {"ok": True}
+
+
+@route(GET, "/api/masters")
+def r_masters(app, q, b):
+    c = app.conn()
+    try:
+        return sv.list_masters(c, app.today())
+    finally:
+        c.close()
+
+
+def _reader(fn):
+    def h(app, q, b):
+        c = app.conn()
+        try:
+            return fn(c, q)
+        finally:
+            c.close()
+    return h
+
+
+GET["/api/voucher"] = _reader(lambda c, q: sv.get_voucher(c, _int(q, "id", True)))
+GET["/api/next_number"] = _reader(lambda c, q: {"number": sv.next_number(c, q.get("vtype", ""), q.get("date", ""))})
+GET["/api/daybook"] = _reader(lambda c, q: sv.day_book(
+    c, q.get("from"), q.get("to"), q.get("vtype") or None, q.get("cancelled") == "1"))
+GET["/api/ledger_statement"] = _reader(lambda c, q: rp.ledger_statement(
+    c, q.get("from"), q.get("to"), _int(q, "ledger_id"), _int(q, "group_id")))
+GET["/api/monthly"] = _reader(lambda c, q: rp.monthly_summary(
+    c, q.get("from"), q.get("to"), _int(q, "ledger_id"), _int(q, "group_id")))
+GET["/api/tb"] = _reader(lambda c, q: rp.trial_balance(c, q.get("from"), q.get("to")))
+GET["/api/pnl"] = _reader(lambda c, q: rp.profit_and_loss(c, q.get("from"), q.get("to")))
+GET["/api/bs"] = _reader(lambda c, q: rp.balance_sheet(c, q.get("from"), q.get("to")))
+GET["/api/activities"] = _reader(lambda c, q: rp.activity_summary(c, q.get("from"), q.get("to")))
+GET["/api/activity"] = _reader(lambda c, q: rp.activity_detail(c, q.get("from"), q.get("to"), _int(q, "cc_id", True)))
+GET["/api/commodities"] = _reader(lambda c, q: rp.commodity_summary(c, q.get("from"), q.get("to")))
+GET["/api/commodity"] = _reader(lambda c, q: rp.commodity_detail(
+    c, q.get("from"), q.get("to"), q.get("item"), q.get("unit")))
+GET["/api/search"] = _reader(lambda c, q: rp.search(c, q))
+GET["/api/dashboard"] = _reader(lambda c, q: rp.dashboard(c, q.get("from"), q.get("to"), dt.date.today().isoformat()))
+
+
+@route(GET, "/api/audit")
+def r_audit(app, q, b):
+    c = app.conn()
+    try:
+        lim = min(_int(q, "limit") or 200, 1000)
+        rows = [dict(r) for r in c.execute(
+            "SELECT id, ts, action, entity, entity_id, substr(detail,1,300) AS detail FROM audit_log "
+            "ORDER BY id DESC LIMIT ?", (lim,))]
+        return {"rows": rows}
+    finally:
+        c.close()
+
+
+# ---- writes (serialised by app.lock in the handler) ---------------------------
+def _writer(fn):
+    def h(app, q, b):
+        c = app.conn()
+        try:
+            return fn(c, b or {})
+        finally:
+            c.close()
+    h.is_write = True
+    return h
+
+
+POST["/api/voucher/save"] = _writer(lambda c, b: sv.save_voucher(c, b))
+POST["/api/voucher/status"] = _writer(lambda c, b: sv.set_voucher_status(
+    c, int(b.get("id") or 0), "cancelled" if b.get("status") == "cancelled" else "posted"))
+POST["/api/ledger/save"] = _writer(lambda c, b: sv.save_ledger(c, b))
+POST["/api/ledger/delete"] = _writer(lambda c, b: sv.delete_ledger(c, int(b.get("id") or 0)) or {"ok": True})
+POST["/api/group/save"] = _writer(lambda c, b: sv.save_group(c, b))
+POST["/api/group/delete"] = _writer(lambda c, b: sv.delete_group(c, int(b.get("id") or 0)) or {"ok": True})
+POST["/api/cc/save"] = _writer(lambda c, b: sv.save_cc(c, b))
+POST["/api/cc/delete"] = _writer(lambda c, b: sv.delete_cc(c, int(b.get("id") or 0)) or {"ok": True})
+POST["/api/company/save"] = _writer(lambda c, b: sv.save_company(c, b) or {"ok": True})
+POST["/api/openings/save"] = _writer(lambda c, b: sv.set_openings(c, b.get("items") or []))
+
+
+@route(POST, "/api/settings/save")
+def r_settings_save(app, q, b):
+    c = app.conn()
+    try:
+        with dbm.write_tx(c):
+            if "text_size" in b:
+                if b["text_size"] not in ("normal", "large", "xlarge"):
+                    raise UserError("Unknown text size.")
+                dbm.set_setting(c, "text_size", b["text_size"])
+            if "copy_dir" in b:
+                folder = str(b["copy_dir"] or "").strip()
+                if folder:
+                    try:
+                        Path(folder).mkdir(parents=True, exist_ok=True)
+                        probe = Path(folder) / ".homeledger-write-test"
+                        probe.write_text("ok")
+                        probe.unlink()
+                    except Exception:
+                        raise UserError("HomeLedger cannot write to that folder. Check the drive is connected "
+                                        "and the folder name is correct.")
+                dbm.set_setting(c, "copy_dir", folder)
+        return {"ok": True}
+    finally:
+        c.close()
+
+
+POST["/api/settings/save"].is_write = True
+
+
+@route(GET, "/api/backups")
+def r_backups(app, q, b):
+    return {"rows": bk.list_backups(app.backup_dir), "dir": str(app.backup_dir)}
+
+
+@route(POST, "/api/backup/create")
+def r_backup_create(app, q, b):
+    info = app.snapshot("manual")
+    return info
+
+
+@route(POST, "/api/backup/restore")
+def r_backup_restore(app, q, b):
+    name = str(b.get("name") or "")
+    if "/" in name or "\\" in name or not bk.NAME_RE.match(name):
+        raise UserError("Unknown backup.")
+    src = app.backup_dir / name
+    bk.validate_backup(src)
+    app.snapshot("pre-restore")       # always keep what is there now
+    bk.restore_into(app.db_file, src)
+    app.notice = None
+    return {"ok": True}
+
+
+for _p in ("/api/backup/create", "/api/backup/restore"):
+    POST[_p].is_write = True
+
+
+@route(POST, "/api/quit")
+def r_quit(app, q, b):
+    threading.Thread(target=app.shutdown, daemon=True).start()
+    return {"ok": True}
+
+
+@route(GET, "/api/health")
+def r_health(app, q, b):
+    c = app.conn()
+    try:
+        out = []
+
+        def add(name, ok, detail):
+            out.append({"name": name, "ok": ok, "detail": detail})
+        rows = [r[0] for r in c.execute("PRAGMA integrity_check").fetchall()]
+        add("Data file integrity", rows == ["ok"],
+            "The data file is healthy." if rows == ["ok"] else "Problems found: " + "; ".join(rows[:3]))
+        fk = c.execute("PRAGMA foreign_key_check").fetchall()
+        add("Links between records", not fk, "All records link correctly." if not fk
+            else f"{len(fk)} broken link(s) found.")
+        unb = c.execute(
+            """SELECT v.id, v.vtype, v.number, v.vdate FROM vouchers v
+               WHERE v.status='posted' AND (SELECT COALESCE(SUM(debit_paise),0) FROM entries WHERE voucher_id=v.id)
+                  <> (SELECT COALESCE(SUM(credit_paise),0) FROM entries WHERE voucher_id=v.id)""").fetchall()
+        add("Every voucher balances", not unb, "Debit equals credit in every voucher." if not unb else
+            "Unbalanced: " + ", ".join(f"{u['vtype']} {u['number']} ({u['vdate']})" for u in unb[:5]))
+        empty = c.execute("""SELECT COUNT(*) FROM vouchers v WHERE NOT EXISTS
+                             (SELECT 1 FROM entries e WHERE e.voucher_id=v.id)""").fetchone()[0]
+        add("No empty vouchers", empty == 0, "No empty vouchers." if not empty else f"{empty} voucher(s) have no lines.")
+        diff = c.execute(
+            """SELECT COALESCE(SUM(CASE WHEN opening_type='Dr' THEN opening_paise ELSE -opening_paise END),0)
+               FROM ledgers WHERE nature IN ('asset','liability')""").fetchone()[0]
+        add("Opening balances agree", diff == 0,
+            "Opening balances are in balance." if diff == 0 else
+            "Opening balances differ by " + f"{abs(diff) / 100:,.2f}" + (" (debit side higher)." if diff > 0 else
+                                                                         " (credit side higher).") +
+            " Use Utilities > Opening Balances to fix.")
+        nb = len(bk.list_backups(app.backup_dir))
+        add("Backups exist", nb > 0, f"{nb} backup(s) stored." if nb else "No backups yet. Press Create Backup Now.")
+        return {"checks": out, "all_ok": all(x["ok"] for x in out if x["name"] != "Opening balances agree")}
+    finally:
+        c.close()
+
+
+def _rupees(p) -> str:
+    p = int(p or 0)
+    return f"{'-' if p < 0 else ''}{abs(p) // 100}.{abs(p) % 100:02d}"
+
+
+@route(GET, "/api/export")
+def r_export(app, q, b):
+    """Everything as CSV files in one zip (opens in Excel)."""
+    c = app.conn()
+    try:
+        files = {}
+
+        def table(name, header, rows):
+            buf = io.StringIO()
+            w = csv.writer(buf)
+            w.writerow(header)
+            w.writerows(rows)
+            files[name] = ("﻿" + buf.getvalue()).encode("utf-8")  # BOM so Excel reads rupee/UTF-8 text properly
+        table("entries.csv",
+              ["Date", "Voucher type", "Voucher no", "Financial year", "Status", "Ledger", "Group", "Debit", "Credit",
+               "Activity", "Item", "Quantity", "Unit", "Narration", "Reference", "Date approximate"],
+              [(r["vdate"], r["vtype"], r["number"], r["fy"], r["status"], r["lname"], r["gname"],
+                _rupees(r["debit_paise"]) if r["debit_paise"] else "", _rupees(r["credit_paise"]) if r["credit_paise"] else "",
+                r["cc"] or "", r["item"] or "", (r["qty_milli"] or 0) / 1000 if r["qty_milli"] else "", r["unit"] or "",
+                r["narration"], r["ref"], "yes" if r["date_approx"] else "")
+               for r in c.execute(
+                   """SELECT v.vdate, v.vtype, v.number, v.fy, v.status, l.name AS lname, g.name AS gname,
+                             e.debit_paise, e.credit_paise, cc.name AS cc, e.item, e.qty_milli, e.unit,
+                             v.narration, v.ref, v.date_approx
+                      FROM entries e JOIN vouchers v ON v.id=e.voucher_id JOIN ledgers l ON l.id=e.ledger_id
+                      JOIN acct_groups g ON g.id=l.group_id LEFT JOIN cost_centres cc ON cc.id=e.cc_id
+                      ORDER BY v.vdate, v.id, e.line_no""")])
+        table("ledgers.csv", ["Ledger", "Group", "Kind", "Opening balance", "Dr/Cr", "Active"],
+              [(r["name"], r["gname"], r["nature"], _rupees(r["opening_paise"]), r["opening_type"],
+                "yes" if r["is_active"] else "no")
+               for r in c.execute("""SELECT l.*, g.name AS gname FROM ledgers l JOIN acct_groups g ON g.id=l.group_id
+                                     ORDER BY g.sort, l.name""")])
+        table("activities.csv", ["Activity", "Belongs to", "Kind", "Active"],
+              [(r["name"], r["pname"] or "", r["kind"], "yes" if r["is_active"] else "no")
+               for r in c.execute("""SELECT a.*, p.name AS pname FROM cost_centres a
+                                     LEFT JOIN cost_centres p ON p.id=a.parent_id ORDER BY a.sort""")])
+        table("audit_log.csv", ["Time", "Action", "Item", "Id", "Details"],
+              [(r["ts"], r["action"], r["entity"], r["entity_id"], r["detail"])
+               for r in c.execute("SELECT * FROM audit_log ORDER BY id")])
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            for n, data in files.items():
+                z.writestr(n, data)
+        return ("zip", f"HomeLedger-export-{app.today().replace('-', '')}.zip", buf.getvalue())
+    finally:
+        c.close()
+
+
+# =============================================================================
+# HTTP plumbing
+# =============================================================================
+def make_handler(app: App):
+    static = config.static_dir()
+
+    class Handler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+        server_version = "HomeLedger"
+
+        def log_message(self, fmt, *args):
+            log.debug("%s - %s", self.address_string(), fmt % args)
+
+        # -- response helpers
+        def _send(self, status, body: bytes, ctype="application/json; charset=utf-8", headers=None):
+            self.send_response(status)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            for k, v in (headers or {}).items():
+                self.send_header(k, v)
+            self.end_headers()
+            if self.command != "HEAD":
+                self.wfile.write(body)
+
+        def _json(self, obj, status=200):
+            self._send(status, json.dumps(obj, separators=(",", ":"), default=str).encode("utf-8"))
+
+        def _host_ok(self):
+            host = (self.headers.get("Host") or "").rsplit(":", 1)[0].strip("[]")
+            return host in ("127.0.0.1", "localhost")
+
+        # -- dispatch
+        def _handle(self, table, body):
+            u = urlparse(self.path)
+            fn = table.get(u.path)
+            if fn is None:
+                return self._json({"error": "Not found"}, 404)
+            q = {k: v[0] for k, v in parse_qs(u.query, keep_blank_values=True).items()}
+            try:
+                if getattr(fn, "is_write", False):
+                    with app.lock:
+                        res = fn(app, q, body)
+                        app.dirty = True
+                    app.maybe_snapshot()
+                else:
+                    res = fn(app, q, body)
+            except UserError as e:
+                return self._json({"error": str(e)}, 400)
+            except sqlite3.OperationalError as e:
+                log.exception("database busy/error")
+                msg = ("HomeLedger is busy. Please try again in a moment." if "locked" in str(e).lower()
+                       else "HomeLedger could not read or write its data file. Your data is safe; "
+                            "please close and reopen HomeLedger. (Details are in the log file.)")
+                return self._json({"error": msg}, 503)
+            except sqlite3.IntegrityError as e:
+                log.exception("integrity error")
+                return self._json({"error": "That change was refused by the data safety checks, so nothing was saved. "
+                                            f"({e})"}, 400)
+            except Exception:
+                log.error("unhandled error on %s\n%s", self.path, traceback.format_exc())
+                return self._json({"error": "Something went wrong inside HomeLedger. Nothing was saved and your "
+                                            "existing data is safe. Please try again; if it keeps happening, "
+                                            "tell the person who set this up (details are in the log file)."}, 500)
+            if isinstance(res, tuple) and res and res[0] == "zip":
+                return self._send(200, res[2], "application/zip",
+                                  {"Content-Disposition": f'attachment; filename="{res[1]}"'})
+            self._json(res)
+
+        def do_GET(self):
+            if not self._host_ok():
+                return self._json({"error": "Forbidden"}, 403)
+            path = urlparse(self.path).path
+            if path.startswith("/api/"):
+                return self._handle(GET, None)
+            if path in ("/", ""):
+                path = "/index.html"
+            target = (static / path.lstrip("/")).resolve()
+            if static.resolve() not in target.parents or not target.is_file():
+                return self._send(404, b"Not found", "text/plain")
+            ctype = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
+            if ctype.startswith("text/") or ctype in ("application/javascript", "image/svg+xml"):
+                ctype += "; charset=utf-8" if "charset" not in ctype else ""
+            self._send(200, target.read_bytes(), ctype)
+
+        do_HEAD = do_GET
+
+        def do_POST(self):
+            if not self._host_ok():
+                return self._json({"error": "Forbidden"}, 403)
+            if self.headers.get("X-HomeLedger") != "1":  # blocks other websites from posting to this port
+                return self._json({"error": "Forbidden"}, 403)
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                n = 0
+            if n > 2_000_000:
+                return self._json({"error": "Request too large."}, 413)
+            raw = self.rfile.read(n) if n else b""
+            try:
+                body = json.loads(raw.decode("utf-8")) if raw else {}
+                if not isinstance(body, dict):
+                    raise ValueError
+            except ValueError:
+                return self._json({"error": "Invalid request."}, 400)
+            self._handle(POST, body)
+
+    return Handler
+
+
+class QuietServer(ThreadingHTTPServer):
+    daemon_threads = True
+    # On Windows, SO_REUSEADDR lets a second program share a port that is already in use; there we ask for
+    # exclusive use instead, so a clash is detected and the next port is tried.
+    allow_reuse_address = (os.name != "nt")
+
+    def server_bind(self):
+        if os.name == "nt" and hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+    def handle_error(self, request, client_address):  # broken pipes when a window closes are normal
+        log.debug("connection error", exc_info=True)
+
+
+def create_server(app: App, port: int) -> ThreadingHTTPServer:
+    httpd = QuietServer(("127.0.0.1", port), make_handler(app))
+    app.httpd = httpd
+    return httpd
