@@ -78,3 +78,12 @@ it is the only way back in if the password is forgotten.
 Utilities > Backup & Restore: you can password-protect the second copy (use this for Google Drive / OneDrive folders).
 KEEP THAT PASSWORD SAFE. Protected copies end in .hlbk and are restored from the same screen.
 The bar at the bottom shows: Saved, Last backup, Second copy, Offline.
+
+
+LOOK, GO TO AND INSTALLER (new in 1.3)
+-------------------------------------
+Alt+G opens Go To: type a few letters of any report, ledger, voucher or activity and press Enter.
+The menu bar (Go To, Company, Data, Export, Print, Lock, F1 Help) works with the mouse or Alt+letter.
+Utilities > Settings > Look switches between TallyPrime style (default) and Classic (Tally ERP 9 style).
+HomeLedger-Setup-x.y.z.exe (built on GitHub, see installer\ and .github\) installs without Python and adds an
+uninstaller in Windows Settings > Apps. Uninstalling asks before touching your accounts; the default is to keep them.
