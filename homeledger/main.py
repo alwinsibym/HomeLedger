@@ -21,6 +21,9 @@ from .errors import CorruptDatabase
 from .server import App, create_server
 
 
+T0 = time.time()
+
+
 def setup_logging():
     handler = logging.handlers.RotatingFileHandler(
         config.log_dir() / "homeledger.log", maxBytes=500_000, backupCount=3, encoding="utf-8")
@@ -127,14 +130,6 @@ def run(argv=None) -> int:
                           f"empty book. The damaged file was kept as {bad_copy.name} in {db_file.parent}.")
         app = App(db_file, backups)
         app.notice = notice
-        # snapshot at start-up if there has been none today
-        try:
-            latest = bk.list_backups(backups)
-            today = time.strftime("%Y-%m-%d")
-            if not any(b["when"].startswith(today) and b["reason"] == "auto" for b in latest):
-                app.snapshot("auto")
-        except Exception:
-            log.exception("start-up backup failed")
         httpd = None
         port = config.DEFAULT_PORT
         for port in range(config.DEFAULT_PORT, config.DEFAULT_PORT + config.PORT_RANGE):
@@ -153,8 +148,20 @@ def run(argv=None) -> int:
         return 1
 
     threading.Thread(target=app.watchdog, daemon=True).start()
+
+    def startup_backup():       # in the background, so a slow pen drive or cloud folder never delays opening
+        try:
+            latest = bk.list_backups(backups)
+            today = time.strftime("%Y-%m-%d")
+            if not any(b["when"].startswith(today) and b["reason"] == "auto" for b in latest):
+                with app.lock:
+                    app.snapshot("auto")
+        except Exception:
+            log.exception("start-up backup failed")
+    threading.Thread(target=startup_backup, daemon=True).start()
     url = f"http://127.0.0.1:{port}/"
-    log.info("HomeLedger %s serving %s (data: %s)", config.VERSION, url, db_file)
+    log.info("HomeLedger %s serving %s (data: %s) - ready %.2f s after start", config.VERSION, url, db_file,
+             time.time() - T0)
     if not no_window:
         threading.Timer(0.6, open_window, args=(url,)).start()
     try:
