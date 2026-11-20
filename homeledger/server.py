@@ -18,6 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from . import auth
 from . import backup as bk
 from . import config
 from . import db as dbm
@@ -49,11 +50,23 @@ class App:
         self.last_auto = 0.0
         self.last_copy_error = ""
         self.dirty = False   # entries changed since the last backup
+        self.sessions = auth.Sessions()
+        self.auth_on = False
+        self.idle_min = 15
+        self.refresh_auth()
         for b in bk.list_backups(backup_dir):
             if b["reason"] == "auto":
                 self.last_auto = max(self.last_auto, dt.datetime.fromisoformat(b["when"]).timestamp())
 
     # -- helpers ----------------------------------------------------------
+    def refresh_auth(self):
+        c = self.conn()
+        try:
+            self.auth_on = auth.enabled(c)
+            self.idle_min = auth.idle_minutes(c)
+        finally:
+            c.close()
+
     def conn(self):
         return dbm.connect(self.db_file)
 
@@ -73,7 +86,11 @@ class App:
             folder = dbm.get_setting(c, "copy_dir", "")
             if folder:
                 try:
-                    bk.copy_to(path, folder)
+                    pw = dbm.get_setting(c, "copy_password", "")
+                    if pw:
+                        bk.copy_protected(path, folder, pw)
+                    else:
+                        bk.copy_to(path, folder)
                     dbm.set_setting(c, "last_external_copy", dbm.now_iso())
                     self.last_copy_error = ""
                 except Exception as e:  # drive unplugged, folder missing...
@@ -194,7 +211,8 @@ def r_status(app, q, b):
                 "last_backup": st["last_backup"] or (backups[0]["when"] if backups else ""),
                 "copy_dir": st["copy_dir"], "default_copy_dir": config.default_copy_dir(),
                 "last_external_copy": st["last_external_copy"], "copy_error": app.last_copy_error,
-                "text_size": st["text_size"] or "large", "data_dir": str(config.data_dir())}
+                "text_size": st["text_size"] or "large", "data_dir": str(config.data_dir()),
+                "copy_protected": bool(dbm.get_setting(c, "copy_password", "")), "auth_on": app.auth_on}
     finally:
         c.close()
 
@@ -303,6 +321,11 @@ def r_settings_save(app, q, b):
                         raise UserError("HomeLedger cannot write to that folder. Check the drive is connected "
                                         "and the folder name is correct.")
                 dbm.set_setting(c, "copy_dir", folder)
+            if "copy_password" in b:
+                pw = str(b["copy_password"] or "")
+                if pw and len(pw) < 6:
+                    raise UserError("Use at least 6 characters for the backup password.")
+                dbm.set_setting(c, "copy_password", pw)
         return {"ok": True}
     finally:
         c.close()
@@ -332,11 +355,146 @@ def r_backup_restore(app, q, b):
     app.snapshot("pre-restore")       # always keep what is there now
     bk.restore_into(app.db_file, src)
     app.notice = None
+    app.refresh_auth()
+    app.sessions.clear()          # a restored book may have different users: everyone signs in again
     return {"ok": True}
 
 
-for _p in ("/api/backup/create", "/api/backup/restore"):
+@route(POST, "/api/backup/restore_file")
+def r_backup_restore_file(app, q, b):
+    """Restore from a password-protected copy (for example one kept in Google Drive)."""
+    path = Path(str(b.get("path") or "").strip().strip('"'))
+    if not path.is_file():
+        raise UserError("That file was not found. Type or paste its full location.")
+    tmp = app.backup_dir / "restore-temp.db"
+    try:
+        bk.decrypt_file(path, tmp, str(b.get("password") or ""))
+        bk.validate_backup(tmp)
+        app.snapshot("pre-restore")
+        bk.restore_into(app.db_file, tmp)
+    finally:
+        tmp.unlink(missing_ok=True)
+    app.notice = None
+    app.refresh_auth()
+    app.sessions.clear()
+    return {"ok": True}
+
+
+for _p in ("/api/backup/create", "/api/backup/restore", "/api/backup/restore_file"):
     POST[_p].is_write = True
+
+
+# ---- sign-in ------------------------------------------------------------------
+PUBLIC = {"/api/ping", "/api/closing", "/api/auth/state", "/api/auth/login", "/api/auth/reset", "/api/quit"}
+
+
+def _authw(fn, owner_only=False, viewer_ok=False):
+    def h(app, q, b):
+        c = app.conn()
+        try:
+            return fn(app, c, q, b or {})
+        finally:
+            c.close()
+    h.is_write = True
+    h.owner_only = owner_only
+    h.viewer_ok = viewer_ok
+    return h
+
+
+@route(GET, "/api/auth/state")
+def r_auth_state(app, q, b):
+    s = app.sessions.get(q.get("_tok"), app.idle_min, touch=False) if app.auth_on else None
+    ok = isinstance(s, dict)
+    return {"enabled": app.auth_on, "logged_in": ok or not app.auth_on, "idle_minutes": app.idle_min,
+            "user": s["username"] if ok else "", "role": s["role"] if ok else ("owner" if not app.auth_on else ""),
+            "idle_choices": list(auth.IDLE_CHOICES), "expired": s == "expired"}
+
+
+def _login(app, c, q, b):
+    if not app.auth_on:
+        raise UserError("Sign-in is not turned on.")
+    u = auth.verify(c, b.get("username"), b.get("password"))
+    return {"user": u["username"], "role": u["role"], "_cookie": app.sessions.start(u)}
+
+
+def _enable(app, c, q, b):
+    key = auth.enable(c, b.get("username"), b.get("password"))
+    app.refresh_auth()
+    u = auth.verify(c, b.get("username"), b.get("password"))
+    return {"recovery_key": key, "_cookie": app.sessions.start(u)}
+
+
+def _disable(app, c, q, b):
+    user = q["_user"]
+    auth.verify(c, user["username"], b.get("password"))
+    auth.disable(c)
+    app.refresh_auth()
+    app.sessions.clear()
+    return {"ok": True}
+
+
+def _logout(app, c, q, b):
+    app.sessions.end(q.get("_tok"))
+    return {"ok": True, "_clear": True}
+
+
+def _change_pw(app, c, q, b):
+    auth.change_password(c, q["_user"]["id"], b.get("old"), b.get("new"))
+    return {"ok": True}
+
+
+def _reset(app, c, q, b):
+    return {"recovery_key": auth.reset_with_recovery_key(c, b.get("key"), b.get("new"))}
+
+
+def _add_user(app, c, q, b):
+    auth.add_user(c, b.get("username"), b.get("password"), b.get("role"))
+    return {"ok": True}
+
+
+def _remove_user(app, c, q, b):
+    uid = int(b.get("id") or 0)
+    if uid == q["_user"]["id"]:
+        raise UserError("You cannot remove the user you are signed in as.")
+    auth.remove_user(c, uid)
+    return {"ok": True}
+
+
+def _idle(app, c, q, b):
+    m = int(b.get("minutes") if b.get("minutes") is not None else 15)
+    if m not in auth.IDLE_CHOICES:
+        raise UserError("Unknown time.")
+    with dbm.write_tx(c):
+        dbm.set_setting(c, "idle_minutes", str(m))
+    app.refresh_auth()
+    return {"ok": True}
+
+
+POST["/api/auth/login"] = _authw(_login, viewer_ok=True)
+POST["/api/auth/enable"] = _authw(_enable)
+POST["/api/auth/disable"] = _authw(_disable, owner_only=True)
+POST["/api/auth/logout"] = _authw(_logout, viewer_ok=True)
+POST["/api/auth/password"] = _authw(_change_pw, viewer_ok=True)
+POST["/api/auth/reset"] = _authw(_reset, viewer_ok=True)
+POST["/api/auth/user/add"] = _authw(_add_user, owner_only=True)
+POST["/api/auth/user/remove"] = _authw(_remove_user, owner_only=True)
+POST["/api/auth/idle"] = _authw(_idle, owner_only=True)
+
+
+@route(GET, "/api/auth/touch")
+def r_auth_touch(app, q, b):
+    return {"ok": True}
+
+
+@route(GET, "/api/auth/users")
+def r_auth_users(app, q, b):
+    if app.auth_on and q["_user"]["role"] != "owner":
+        raise UserError("Only the owner can see the users.")
+    c = app.conn()
+    try:
+        return {"rows": auth.users(c)}
+    finally:
+        c.close()
 
 
 @route(POST, "/api/quit")
@@ -454,7 +612,8 @@ def make_handler(app: App):
             self.send_response(status)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store")
+            if "Cache-Control" not in (headers or {}):
+                self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
             for k, v in (headers or {}).items():
                 self.send_header(k, v)
@@ -470,12 +629,35 @@ def make_handler(app: App):
             return host in ("127.0.0.1", "localhost")
 
         # -- dispatch
+        def _cookie(self):
+            for part in (self.headers.get("Cookie") or "").split(";"):
+                k, _, v = part.strip().partition("=")
+                if k == "hl_session":
+                    return v
+            return ""
+
         def _handle(self, table, body):
             u = urlparse(self.path)
             fn = table.get(u.path)
             if fn is None:
                 return self._json({"error": "Not found"}, 404)
             q = {k: v[0] for k, v in parse_qs(u.query, keep_blank_values=True).items()}
+            q.pop("_tok", None); q.pop("_user", None)          # these are set only by the program itself
+            tok = self._cookie()
+            q["_tok"] = tok
+            if app.auth_on and u.path not in PUBLIC:
+                s = app.sessions.get(tok, app.idle_min, touch=True)
+                if not isinstance(s, dict):
+                    return self._json({"error": "Please sign in again.", "locked": True}, 401)
+                if getattr(fn, "owner_only", False) and s["role"] != "owner":
+                    return self._json({"error": "Only the owner can do this."}, 403)
+                if getattr(fn, "is_write", False) and s["role"] != "owner" and not getattr(fn, "viewer_ok", False):
+                    return self._json({"error": "This user can only view. Sign in as the owner to make changes."}, 403)
+                q["_user"] = s
+            elif not app.auth_on:
+                q["_user"] = {"id": 0, "username": "", "role": "owner"}
+            else:
+                q["_user"] = {"id": 0, "username": "", "role": ""}
             try:
                 if getattr(fn, "is_write", False):
                     with app.lock:
@@ -504,7 +686,12 @@ def make_handler(app: App):
             if isinstance(res, tuple) and res and res[0] == "zip":
                 return self._send(200, res[2], "application/zip",
                                   {"Content-Disposition": f'attachment; filename="{res[1]}"'})
-            self._json(res)
+            hdrs = None
+            if isinstance(res, dict) and ("_cookie" in res or res.get("_clear")):
+                ck = res.pop("_cookie", "")
+                res.pop("_clear", None)
+                hdrs = {"Set-Cookie": f"hl_session={ck}; HttpOnly; SameSite=Strict; Path=/" + ("" if ck else "; Max-Age=0")}
+            self._send(200, json.dumps(res, separators=(",", ":"), default=str).encode("utf-8"), headers=hdrs)
 
         def do_GET(self):
             if not self._host_ok():
@@ -520,7 +707,12 @@ def make_handler(app: App):
             ctype = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
             if ctype.startswith("text/") or ctype in ("application/javascript", "image/svg+xml"):
                 ctype += "; charset=utf-8" if "charset" not in ctype else ""
-            self._send(200, target.read_bytes(), ctype)
+            st = target.stat()
+            etag = '"%x-%x"' % (st.st_mtime_ns, st.st_size)
+            if self.headers.get("If-None-Match") == etag:     # unchanged: nothing to send, so pages open instantly
+                self.send_response(304); self.send_header("ETag", etag); self.send_header("Cache-Control", "no-cache")
+                self.send_header("Content-Length", "0"); self.end_headers(); return
+            self._send(200, target.read_bytes(), ctype, {"ETag": etag, "Cache-Control": "no-cache"})
 
         do_HEAD = do_GET
 
