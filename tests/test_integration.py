@@ -84,6 +84,20 @@ class TestServer(unittest.TestCase):
         for path in ("/api/tb", "/api/pnl", "/api/bs", "/api/activities", "/api/commodities", "/api/daybook", "/api/search"):
             self.assertEqual(call(f"{path}?from=2026-04-01&to=2027-03-31")[0], 200, path)
 
+    def test_look_setting_and_static_caching(self):
+        self.assertEqual(call("/api/status")[1]["look"], "prime")
+        self.assertEqual(call("/api/settings/save", {"look": "classic"})[0], 200)
+        self.assertEqual(call("/api/status")[1]["look"], "classic")
+        self.assertEqual(call("/api/settings/save", {"look": "neon"})[0], 400)
+        req = urllib.request.Request(f"http://127.0.0.1:{PORT}/core.js")
+        with urllib.request.urlopen(req) as r:
+            etag = r.headers["ETag"]; self.assertTrue(etag)
+        req = urllib.request.Request(f"http://127.0.0.1:{PORT}/core.js", headers={"If-None-Match": etag})
+        with self.assertRaises(urllib.error.HTTPError) as cm: urllib.request.urlopen(req)
+        self.assertEqual(cm.exception.code, 304)                              # unchanged files are not sent again
+        for name in ("goto.js", "auth.js", "manifest.webmanifest", "favicon.ico", "icon-192.png"):
+            with urllib.request.urlopen(f"http://127.0.0.1:{PORT}/{name}") as r: self.assertEqual(r.status, 200, name)
+
     def test_concurrent_writes_unique_numbers(self):
         L = ledger_ids(); out = []
         def work(i):
