@@ -37,6 +37,7 @@
       if (typing && e.target.closest(".combo") && $(".dd", e.target.closest(".combo")).style.display !== "none") return;
       e.preventDefault(); HL.back(); return;
     }
+    if (e.ctrlKey && e.key.toLowerCase() === "l") { e.preventDefault(); HL.lockNow(); return; }
     if (e.ctrlKey && e.key.toLowerCase() === "f") { e.preventDefault(); $("#qsearch").focus(); $("#qsearch").select(); return; }
     if (FKEYS[e.key] && HL.cur && HL.cur.name !== "voucher") { e.preventDefault(); HL.go("voucher", { vtype: FKEYS[e.key] }); return; }
     if (e.key === "F3") { e.preventDefault(); HL.go("company"); return; }
@@ -53,18 +54,26 @@
   window.addEventListener("error", e => say("A screen problem occurred. Your data is safe. Press Esc and try again.", "err"));
   window.addEventListener("unhandledrejection", e => { if (e.reason && e.reason.message) say(e.reason.message, "err"); });
 
-  (async function boot() {
-    clock(); setInterval(clock, 20000);
+  HL.start = async function () {
     try {
       await loadMasters();
       applySize();
       $("#company").textContent = HL.S.status.company.name;
       HL.cur = { name: "gateway", params: {} };
+      HL._booted = true;
       HL.render();
-      // a plain, offline warm-up so the first click is instant
       HL.get("/api/ping").catch(() => { });
     } catch (e) {
+      if (e.locked) return;
       $("#screen").replaceChildren(h("div", { class: "banner err" }, "HomeLedger could not start: " + e.message));
     }
+  };
+  (async function boot() {
+    clock(); setInterval(clock, 20000);
+    try {
+      await HL.loadAuth();
+      if (HL.auth.enabled && !HL.auth.loggedIn) { HL.showLogin(); return; }
+    } catch (e) { /* fall through: start() shows the problem */ }
+    HL.start();
   })();
 })();

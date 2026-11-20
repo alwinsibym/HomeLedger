@@ -89,6 +89,7 @@ async function api(path, body) {
   }
   let data = null;
   try { data = await res.json(); } catch (e) { /* ignore */ }
+  if (res.status === 401 && data && data.locked) { HL.showLogin && HL.showLogin("Please sign in again."); const e = new Error("Please sign in again."); e.locked = true; throw e; }
   if (!res.ok) throw new Error((data && data.error) || "Something went wrong.");
   return data;
 }
@@ -250,6 +251,7 @@ function ccOptions(onlyActive) {
 async function loadMasters() {
   HL.S.masters = await HL.get("/api/masters");
   HL.S.status = await HL.get("/api/status");
+  HL.updateStatusBar && HL.updateStatusBar();
   return HL.S.masters;
 }
 

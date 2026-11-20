@@ -159,11 +159,13 @@ HL.screens.utilities = {
   async render(sc, params) {
     await loadMasters();
     const tab = params.tab || "backup";
-    const defs = [["backup", "Backup & Restore"], ["health", "Health Check"], ["export", "Export to Excel"], ["settings", "Settings"], ["audit", "Audit Trail"]];
+    const defs = [["backup", "Backup & Restore"], ["health", "Health Check"], ["export", "Export to Excel"], ["settings", "Settings"], ["security", "Security"], ["audit", "Audit Trail"]];
     const root = h("div", {}, h("h1", { class: "title" }, "Utilities"), h("div", { class: "chips", style: "margin:.4rem 0 .9rem" }, defs.map(([k, l]) => h("button", { class: "chip" + (tab === k ? " on" : ""), type: "button", onclick: () => { HL.cur.params = { tab: k }; HL.refresh(); } }, l))));
     const st = HL.S.status;
     if (tab === "backup") {
       const b = await HL.get("/api/backups");
+      let pwTouched = false;
+      const copyP = h("input", { type: "password", autocomplete: "new-password", placeholder: st.copy_protected ? "\u2022\u2022\u2022\u2022\u2022\u2022 (set)" : "", style: "width:100%", "aria-label": "Backup password", oninput: () => { pwTouched = true; } });
       const copyI = h("input", { type: "text", value: st.copy_dir || "", placeholder: st.default_copy_dir, style: "width:100%", "aria-label": "Second copy folder" });
       root.append(
         h("div", { class: "panel", style: "padding:.9rem;margin-bottom:.8rem" }, h("h3", { style: "margin-top:0" }, "Your data is backed up automatically"),
@@ -174,7 +176,9 @@ HL.screens.utilities = {
           h("p", {}, "Every backup is also copied to this folder. Choose a pen drive, an external disk, or a OneDrive/Google Drive folder so the data survives if this computer fails."),
           st.copy_error ? h("div", { class: "banner err" }, "Last attempt failed: " + st.copy_error) : "",
           h("label", { class: "f" }, "Folder (for example E:\\HomeLedger Backups)", copyI),
-          h("div", { class: "row", style: "margin-top:.5rem" }, h("button", { class: "btn primary", onclick: async () => { try { await HL.post("/api/settings/save", { copy_dir: copyI.value }); await loadMasters(); say(copyI.value.trim() ? "Second copy folder saved." : "Second copy turned off.", "ok"); HL.refresh(); } catch (e) { fail(e); } } }, "Save folder"), st.last_external_copy ? h("span", { class: "muted" }, "Last second copy: " + st.last_external_copy.slice(0, 16)) : "")));
+          h("label", { class: "f", style: "margin-top:.5rem" }, st.copy_protected ? "Backup password (protected now; type a new one to change, clear to turn off)" : "Protect the copy with a password (recommended for Google Drive or OneDrive; optional)", copyP),
+          h("p", { class: "hint" }, "A protected copy is scrambled so nobody who opens the folder can read your accounts. KEEP THIS PASSWORD SAFE: without it, protected copies cannot be opened. The backups kept on this computer are not scrambled."),
+          h("div", { class: "row", style: "margin-top:.5rem" }, h("button", { class: "btn primary", onclick: async () => { try { await HL.post("/api/settings/save", { copy_dir: copyI.value, ...(copyP.value !== "" || pwTouched ? { copy_password: copyP.value } : {}) }); await loadMasters(); say(copyI.value.trim() ? "Second copy folder saved." : "Second copy turned off.", "ok"); HL.refresh(); } catch (e) { fail(e); } } }, "Save folder"), st.last_external_copy ? h("span", { class: "muted" }, "Last second copy: " + st.last_external_copy.slice(0, 16)) : "")));
       const t = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, ["Backup made", "Kind", "Size", ""].map(x => h("th", {}, x)))));
       const tb = h("tbody", {}); t.append(tb);
       const kind = { auto: "Automatic", manual: "Manual", "pre-restore": "Before a restore" };
@@ -182,7 +186,15 @@ HL.screens.utilities = {
         h("td", { class: "r" }, h("button", { class: "btn", onclick: async () => {
           if (!(await confirmBox("Restore this backup?", "HomeLedger will go back to how it was on " + r.when.slice(0, 16) + ". Anything entered after that time will be removed from the live book. A backup of the current state is made first, so this can be undone.", "Yes, restore", true))) return;
           try { await HL.post("/api/backup/restore", { name: r.name }); await loadMasters(); say("Restored.", "ok"); HL.stack = []; HL.cur = { name: "gateway", params: {} }; HL.render(); } catch (e) { fail(e); } } }, "Restore")))));
-      root.append(h("h3", {}, "Backups on this computer"), h("div", { class: "scroll" }, t));
+      const rfPath = h("input", { type: "text", placeholder: "G:\\My Drive\\HomeLedger\\homeledger-20261120-101500-auto.db.hlbk", style: "width:100%", "aria-label": "Protected copy file" });
+      const rfPw = h("input", { type: "password", style: "width:100%", "aria-label": "Backup password" });
+      root.append(h("h3", {}, "Backups on this computer"), h("div", { class: "scroll" }, t),
+        h("div", { class: "panel", style: "padding:.9rem;margin-top:.8rem" }, h("h3", { style: "margin-top:0" }, "Restore from a protected copy"),
+          h("p", { class: "muted" }, "For a copy kept in Google Drive / a pen drive (a file ending in .hlbk), for example on a new computer."),
+          h("label", { class: "f" }, "Full location of the file", rfPath), h("label", { class: "f" }, "Backup password", rfPw),
+          h("div", { class: "row", style: "margin-top:.5rem" }, h("button", { class: "btn", onclick: async () => {
+            if (!(await confirmBox("Restore this protected copy?", "HomeLedger will go back to how it was when that copy was made. A backup of the current state is made first.", "Yes, restore", true))) return;
+            try { await HL.post("/api/backup/restore_file", { path: rfPath.value, password: rfPw.value }); await loadMasters(); say("Restored.", "ok"); HL.stack = []; HL.cur = { name: "gateway", params: {} }; HL.render(); } catch (e) { fail(e); } } }, "Restore"))));
     } else if (tab === "health") {
       const r = await HL.get("/api/health");
       root.append(h("div", { class: "banner " + (r.all_ok ? "ok" : "warn") }, r.all_ok ? "Everything looks healthy." : "Some checks need attention."), h("div", { class: "checks" }, r.checks.map(c => h("div", { class: "ck " + (c.ok ? "ok" : "bad") }, h("b", {}, (c.ok ? "\u2713 " : "\u26a0 ") + c.name), h("span", {}, c.detail)))),
@@ -190,6 +202,8 @@ HL.screens.utilities = {
     } else if (tab === "export") {
       root.append(h("div", { class: "panel", style: "padding:.9rem;max-width:40rem" }, h("h3", { style: "margin-top:0" }, "Export everything to Excel"), h("p", {}, "Downloads one zip file with every entry, ledger, activity and the audit trail as spreadsheets (CSV) that open in Excel. This is a read-only copy for your own records and for sharing with an accountant; to protect your data use Backup."),
         h("a", { class: "btn primary", href: "/api/export", download: "" }, "Download export (zip)")));
+    } else if (tab === "security") {
+      await securityTab(root);
     } else if (tab === "settings") {
       const size = h("select", { "aria-label": "Text size" }, [["normal", "Normal"], ["large", "Large (default)"], ["xlarge", "Extra large"]].map(([v, l]) => h("option", { value: v }, l))); size.value = st.text_size;
       size.onchange = async () => { try { await HL.post("/api/settings/save", { text_size: size.value }); st.text_size = size.value; applySize(); say("Text size changed.", "ok"); } catch (e) { fail(e); } };
@@ -215,3 +229,50 @@ HL.quit = async function () {
   setTimeout(() => window.close(), 400);
 };
 function applySize() { document.body.className = "sz-" + ((HL.S.status && HL.S.status.text_size) || "large"); }
+
+
+/* ---------- security tab ---------- */
+async function securityTab(root) {
+  const A = HL.auth;
+  const done = async msg => { await HL.loadAuth(); await loadMasters(); say(msg, "ok"); HL.refresh(); };
+  if (!A.enabled) {
+    const un = h("input", { type: "text", autocomplete: "off", "aria-label": "User name", placeholder: "for example: father" });
+    const p1 = h("input", { type: "password", autocomplete: "new-password", "aria-label": "Password or PIN" });
+    const p2 = h("input", { type: "password", autocomplete: "new-password", "aria-label": "Password again" });
+    root.append(h("div", { class: "panel", style: "padding:.9rem;max-width:40rem" }, h("h3", { style: "margin-top:0" }, "Sign-in is OFF"),
+      h("p", {}, "Anyone who opens HomeLedger on this computer can see and change the accounts. You can ask for a user name and password (or a short PIN) every time it opens, and lock it when idle."),
+      h("label", { class: "f" }, "Owner user name", un), h("label", { class: "f" }, "Password or PIN (at least 4 characters)", p1), h("label", { class: "f" }, "Type it again", p2),
+      h("div", { class: "row", style: "margin-top:.6rem" }, h("button", { class: "btn primary", onclick: async () => {
+        try {
+          if (p1.value !== p2.value) throw new Error("The two passwords are not the same.");
+          const r = await HL.post("/api/auth/enable", { username: un.value, password: p1.value });
+          await HL.loadAuth(); await loadMasters(); HL.showNewKey(r.recovery_key, "Sign-in is now ON. This is your recovery key, for the day the password is forgotten."); HL.refresh();
+        } catch (e) { fail(e); } } }, "Turn on sign-in")),
+      h("p", { class: "hint" }, "Honest note: this keeps other people at the computer out of HomeLedger. To also protect the data file itself if the computer is lost or copied, turn on Windows BitLocker or use a Windows account password.")));
+    return;
+  }
+  const idle = h("select", { "aria-label": "Lock after" }, A.choices.map(m => h("option", { value: m }, m === 0 ? "Never" : m + " minutes"))); idle.value = String(A.idle);
+  const owner = A.role === "owner";
+  root.append(h("div", { class: "panel", style: "padding:.9rem;max-width:44rem;margin-bottom:.8rem" }, h("h3", { style: "margin-top:0" }, "Sign-in is ON"),
+    h("p", {}, "Signed in as ", h("b", {}, A.user), " (" + (owner ? "owner: can change everything" : "view only") + ")."),
+    h("div", { class: "row" }, h("button", { class: "btn", onclick: HL.lockNow }, "Lock now (Ctrl+L)")),
+    owner ? h("label", { class: "f", style: "margin-top:.7rem" }, "Lock automatically after no use for", idle) : ""));
+  idle.onchange = async () => { try { await HL.post("/api/auth/idle", { minutes: +idle.value }); await done("Saved."); } catch (e) { fail(e); } };
+  const o = h("input", { type: "password", autocomplete: "current-password", "aria-label": "Current password" }), n = h("input", { type: "password", autocomplete: "new-password", "aria-label": "New password" });
+  root.append(h("div", { class: "panel", style: "padding:.9rem;max-width:44rem;margin-bottom:.8rem" }, h("h3", { style: "margin-top:0" }, "Change my password"),
+    h("div", { class: "fgrid" }, h("label", { class: "f" }, "Current", o), h("label", { class: "f" }, "New", n)),
+    h("div", { class: "row", style: "margin-top:.5rem" }, h("button", { class: "btn", onclick: async () => { try { await HL.post("/api/auth/password", { old: o.value, new: n.value }); o.value = n.value = ""; say("Password changed.", "ok"); } catch (e) { fail(e); } } }, "Change password"))));
+  if (!owner) return;
+  const us = await HL.get("/api/auth/users");
+  const t = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, ["User", "Can", ""].map(x => h("th", {}, x))))); const tb = h("tbody", {}); t.append(tb);
+  us.rows.forEach(u => tb.append(h("tr", {}, h("td", {}, u.username), h("td", {}, u.role === "owner" ? "Change everything" : "View only"),
+    h("td", { class: "r" }, u.username.toLowerCase() === A.user.toLowerCase() ? "" : h("button", { class: "btn", onclick: async () => { if (await confirmBox("Remove " + u.username + "?", "They will no longer be able to sign in.", "Yes, remove", true)) { try { await HL.post("/api/auth/user/remove", { id: u.id }); await done("User removed."); } catch (e) { fail(e); } } } }, "Remove")))));
+  const nu = h("input", { type: "text", autocomplete: "off", "aria-label": "New user name" }), np = h("input", { type: "password", autocomplete: "new-password", "aria-label": "New user password" });
+  const role = h("select", { "aria-label": "Role" }, h("option", { value: "viewer" }, "View only (cannot change anything)"), h("option", { value: "owner" }, "Owner (can change everything)"));
+  root.append(h("div", { class: "panel", style: "padding:.9rem;max-width:44rem;margin-bottom:.8rem" }, h("h3", { style: "margin-top:0" }, "Users"), h("div", { class: "scroll" }, t),
+    h("h4", {}, "Add a user"), h("div", { class: "fgrid" }, h("label", { class: "f" }, "User name", nu), h("label", { class: "f" }, "Password or PIN", np), h("label", { class: "f" }, "Can", role)),
+    h("div", { class: "row", style: "margin-top:.5rem" }, h("button", { class: "btn", onclick: async () => { try { await HL.post("/api/auth/user/add", { username: nu.value, password: np.value, role: role.value }); await done("User added."); } catch (e) { fail(e); } } }, "Add user"))));
+  const dp = h("input", { type: "password", autocomplete: "current-password", "aria-label": "Your password" });
+  root.append(h("div", { class: "panel", style: "padding:.9rem;max-width:44rem" }, h("h3", { style: "margin-top:0" }, "Turn sign-in off"), h("label", { class: "f" }, "Type your password to confirm", dp),
+    h("div", { class: "row", style: "margin-top:.5rem" }, h("button", { class: "btn", onclick: async () => { try { await HL.post("/api/auth/disable", { password: dp.value }); await done("Sign-in is off."); } catch (e) { fail(e); } } }, "Turn off sign-in"))));
+}
