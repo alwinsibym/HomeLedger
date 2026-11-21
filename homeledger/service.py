@@ -364,6 +364,7 @@ def _prepare(conn, p: dict, existing: dict | None):
     narration = _txt(p.get("narration"), 500, "Narration")
     ref = _txt(p.get("ref"), 60, "Reference")
     return {"vtype": vtype, "vdate": vdate, "lines": lines, "narration": narration, "ref": ref,
+            "status": (p.get("status") if p.get("status") in ("posted", "optional", "memo") else "posted"),
             "date_approx": 1 if p.get("date_approx") else 0, "fy": fy_label(vdate, company["fy_start_month"])}
 
 
@@ -420,17 +421,17 @@ def save_voucher(conn, p: dict) -> dict:
             if d["fy"] != existing["fy"]:
                 number = _next_number(conn, d["vtype"], d["fy"])
             conn.execute(
-                """UPDATE vouchers SET fy=?, number=?, vdate=?, narration=?, ref=?, date_approx=?, updated_at=?
+                """UPDATE vouchers SET fy=?, number=?, vdate=?, narration=?, ref=?, date_approx=?, status=?, updated_at=?
                    WHERE id=?""",
-                (d["fy"], number, d["vdate"], d["narration"], d["ref"], d["date_approx"], now, vid))
+                (d["fy"], number, d["vdate"], d["narration"], d["ref"], d["date_approx"], d["status"], now, vid))
             conn.execute("DELETE FROM entries WHERE voucher_id=?", (vid,))
             action = "alter"
         else:
             number = _next_number(conn, d["vtype"], d["fy"])
             cur = conn.execute(
                 """INSERT INTO vouchers(vtype, fy, number, vdate, narration, ref, date_approx, status, created_at, updated_at)
-                   VALUES (?,?,?,?,?,?,?,'posted',?,?)""",
-                (d["vtype"], d["fy"], number, d["vdate"], d["narration"], d["ref"], d["date_approx"], now, now))
+                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                (d["vtype"], d["fy"], number, d["vdate"], d["narration"], d["ref"], d["date_approx"], d["status"], now, now))
             vid = cur.lastrowid
             action = "create"
         _write_lines(conn, vid, d["lines"])
@@ -452,7 +453,19 @@ def next_number(conn, vtype: str, vdate: str) -> int:
     return _next_number(conn, vtype, fy)
 
 
+def delete_voucher(conn, vid: int) -> dict:
+    """Alt+D in Tally: remove a voucher for good. The full voucher is kept in the audit log."""
+    with dbm.write_tx(conn):
+        v = get_voucher(conn, vid)
+        conn.execute("DELETE FROM entries WHERE voucher_id=?", (vid,))
+        conn.execute("DELETE FROM vouchers WHERE id=?", (vid,))
+        dbm.audit(conn, "delete", "voucher", vid, json.dumps({"before": v}, default=str))
+    return {"ok": True}
+
+
 def set_voucher_status(conn, vid: int, status: str) -> dict:
+    if status not in ("posted", "cancelled", "optional", "memo"):
+        raise UserError("Unknown voucher status.")
     with dbm.write_tx(conn):
         v = get_voucher(conn, vid)
         if v["status"] == status:

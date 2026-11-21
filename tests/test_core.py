@@ -195,6 +195,19 @@ class TestVouchers(Base):
         log = [r["action"] for r in self.c.execute("select action from audit_log where entity='voucher' order by id")]
         self.assertEqual(log, ["create", "alter", "cancel", "restore"])
 
+    def test_optional_and_delete(self):
+        v = self.pay("2026-11-10", "Water Bill", 100, )
+        v = sv.save_voucher(self.c, {"id": v["id"], "vtype": "Payment", "date": "2026-11-10", "status": "optional", "lines": [
+            {"ledger_id": self.L["Water Bill"], "side": "Dr", "amount": "100"}, {"ledger_id": self.L["Cash"], "side": "Cr", "amount": "100"}]})
+        self.assertEqual(v["status"], "optional")
+        self.assertEqual(rp.trial_balance(self.c, "2026-04-01", "2027-03-31")["total_dr"], 0)
+        sv.set_voucher_status(self.c, v["id"], "posted")
+        self.assertEqual(rp.trial_balance(self.c, "2026-04-01", "2027-03-31")["total_dr"], 10000)
+        sv.delete_voucher(self.c, v["id"])
+        self.assertEqual(rp.trial_balance(self.c, "2026-04-01", "2027-03-31")["total_dr"], 0)
+        self.assertEqual(self.c.execute("select count(*) from entries").fetchone()[0], 0)
+        self.assertEqual(self.c.execute("select action from audit_log order by id desc limit 1").fetchone()[0], "delete")
+
     def test_database_refuses_bad_rows_directly(self):
         v = self.pay("2026-11-10", "Water Bill", 100)
         with self.assertRaises(sqlite3.IntegrityError):   # both sides on one line

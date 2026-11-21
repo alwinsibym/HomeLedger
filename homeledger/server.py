@@ -289,7 +289,8 @@ def _writer(fn):
 
 POST["/api/voucher/save"] = _writer(lambda c, b: sv.save_voucher(c, b))
 POST["/api/voucher/status"] = _writer(lambda c, b: sv.set_voucher_status(
-    c, int(b.get("id") or 0), "cancelled" if b.get("status") == "cancelled" else "posted"))
+    c, int(b.get("id") or 0), b.get("status") if b.get("status") in ("cancelled", "optional", "memo") else "posted"))
+POST["/api/voucher/delete"] = _writer(lambda c, b: sv.delete_voucher(c, int(b.get("id") or 0)))
 POST["/api/ledger/save"] = _writer(lambda c, b: sv.save_ledger(c, b))
 POST["/api/ledger/delete"] = _writer(lambda c, b: sv.delete_ledger(c, int(b.get("id") or 0)) or {"ok": True})
 POST["/api/group/save"] = _writer(lambda c, b: sv.save_group(c, b))

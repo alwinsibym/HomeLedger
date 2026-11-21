@@ -242,7 +242,7 @@ HL.screens.voucher = {
       else mode = (cbLines.length === 1 && cbLines[0].side === wantSide) ? "simple" : "generic";
     }
     const dflt = HL.S.lastVoucherDate || todayIso();
-    const S = { date: v ? v.date : (params.date || dflt), approx: v ? v.date_approx : false, ref: v ? v.ref : "", narration: v ? v.narration : "", dirty: false };
+    const S = { date: v ? v.date : (params.date || dflt), approx: v ? v.date_approx : false, ref: v ? v.ref : "", narration: v ? v.narration : "", dirty: false, status: v && v.status !== "cancelled" ? v.status : "posted" };
     const root = h("div", {});
     const num = h("b", {}, "");
     const dateInp = h("input", { type: "text", value: showDate(S.date), style: "width:9.5rem", "aria-label": "Date" });
@@ -285,7 +285,7 @@ HL.screens.voucher = {
     const heads = [];
     if (mode === "generic") heads.push(h("th", { class: "sidecol" }, "Dr/Cr"));
     heads.push(h("th", {}, vtype === "Contra" ? "Put into (Cash / Bank)" : mode === "simple" ? (vtype === "Payment" ? "Particulars (spent on / paid to)" : "Particulars (received from / for)") : "Account"));
-    heads.push(h("th", { style: "width:11rem" }, "Activity"));
+    heads.push(h("th", { style: "width:11rem" }, "Cost Centre"));
     if (showItems) heads.push(h("th", { style: "width:10rem" }, "Item (optional)"), h("th", { class: "qtycol" }, "Qty"), h("th", { class: "unitcol" }, "Unit"));
     heads.push(h("th", { class: "amtcol right" }, "Amount (₹)"), h("th", { class: "xcol" }, ""));
     tbl.append(h("thead", {}, h("tr", {}, heads)));
@@ -316,10 +316,10 @@ HL.screens.voucher = {
         onpick: () => { fillCc(); S.dirty = true; } });
       function fillCc() { const o = r.led.option; if (o && o.data.default_cc_id && !r.cc.value) r.cc.set(o.data.default_cc_id); }
       tr.append(h("td", {}, r.led.el));
-      r.cc = picker({ options: () => ccOptions(true), value: pre ? pre.cc_id : null, placeholder: "Activity", width: "100%", onpick: () => { S.dirty = true; } });
+      r.cc = picker({ options: () => ccOptions(true), value: pre ? pre.cc_id : null, placeholder: "Cost centre", width: "100%", onpick: () => { S.dirty = true; } });
       tr.append(h("td", {}, r.cc.el));
       if (showItems) {
-        r.item = h("input", { type: "text", list: "dl-items", value: pre ? pre.item : "", placeholder: "e.g. Urea", "aria-label": "Item" });
+        r.item = h("input", { type: "text", list: "dl-items", value: pre ? pre.item : "", placeholder: "Item name", "aria-label": "Item" });
         r.qty = h("input", { type: "text", inputmode: "decimal", value: pre && pre.qty_milli ? qtyStr(pre.qty_milli).replace(/,/g, "") : "", style: "text-align:right", "aria-label": "Quantity" });
         r.unit = h("input", { type: "text", list: "dl-units", value: pre ? pre.unit : "", "aria-label": "Unit" });
         tr.append(h("td", {}, r.item), h("td", { class: "qtycol" }, r.qty), h("td", { class: "unitcol" }, r.unit));
@@ -389,7 +389,7 @@ HL.screens.voucher = {
           const t = lines.reduce((s, l) => s + Math.round(parseFloat(l.amount) * 100), 0);
           lines.push({ ledger_id: acct.value, side: vtype === "Receipt" ? "Dr" : "Cr", amount: (t / 100).toFixed(2) });
         }
-        const res = await HL.post("/api/voucher/save", { id: v ? v.id : undefined, vtype, date: S.date, narration: narr.value, ref: refInp.value, date_approx: approx.checked, lines });
+        const res = await HL.post("/api/voucher/save", { id: v ? v.id : undefined, vtype, date: S.date, narration: narr.value, status: S.status, ref: refInp.value, date_approx: approx.checked, lines });
         S.dirty = false; HL.S.lastVoucherDate = S.date; if (acct && acct.value) HL.S.lastAcct = acct.value;
         say(`${vtype} no. ${res.number} saved (${rs(res.total_paise)}).`, "ok");
         await loadMasters();
@@ -399,20 +399,32 @@ HL.screens.voucher = {
     }
     HL.cur.guard = () => !S.dirty || confirm("You have not saved this voucher. Leave without saving?");
     const sw = t => () => { if (!S.dirty || confirm("Switch voucher type? The current entry has not been saved.")) { S.dirty = false; HL.go("voucher", { vtype: t, date: S.date }, { replace: true }); } };
+    const optLabel = () => S.status === "optional" ? "Optional: ON" : "Optional voucher";
+    const toggleOpt = () => { S.status = S.status === "optional" ? "posted" : "optional"; S.dirty = true; say(S.status === "optional" ? "Optional voucher: it will not count in any total until you make it regular." : "Regular voucher: it counts in totals.", "ok"); };
     HL.onKey = e => {
+      if (e.altKey && v && !e.ctrlKey && HL.voucherActs) { const k = e.key.toLowerCase(); if (k === "d") { e.preventDefault(); HL.voucherActs.del(); return true; } if (k === "x") { e.preventDefault(); HL.voucherActs.cancel(); return true; } }
+      if (e.ctrlKey && e.key.toLowerCase() === "l") { e.preventDefault(); toggleOpt(); return true; }
+      if (e.ctrlKey && e.key === "Enter") { e.preventDefault(); save(); return true; }
       if (e.ctrlKey && e.key.toLowerCase() === "a") { e.preventDefault(); save(); return true; }
       const kk = (e.ctrlKey ? "Ctrl+" : "") + e.key;
       const t = Object.keys(VOUCHER_KEYS).find(k => VOUCHER_KEYS[k] === kk);
       if (t && !v) { e.preventDefault(); sw(t)(); return true; }
     };
-    const keys = [{ k: "Ctrl+A", label: "Accept (save)", fn: save }, { k: "Esc", label: "Back", fn: HL.back }, "sep"];
+    const keys = [{ k: "Ctrl+A", label: "Accept (save)", fn: save }, { k: "Ctrl+L", label: "Optional voucher", fn: toggleOpt }, { k: "Esc", label: "Back", fn: HL.back }, "sep"];
     if (!v) for (const t of ["Contra", "Payment", "Receipt", "Journal", "Sales", "Purchase", "Credit Note", "Debit Note"]) keys.push({ k: VOUCHER_KEYS[t], label: t, fn: sw(t) });
     if (v) {
-      keys.push({ k: "", label: v.status === "cancelled" ? "Restore voucher" : "Cancel voucher", fn: async () => {
+      const toggleCancel = async () => {
         const cancelling = v.status !== "cancelled";
         if (!(await confirmBox(cancelling ? "Cancel this voucher?" : "Restore this voucher?", cancelling ? "It will no longer count in any total, but stays in the records (shown struck through in the Day Book). You can restore it later." : "It will count in totals again.", cancelling ? "Yes, cancel it" : "Yes, restore", cancelling))) return;
-        try { await HL.post("/api/voucher/status", { id: v.id, status: cancelling ? "cancelled" : "posted" }); say(cancelling ? "Voucher cancelled." : "Voucher restored.", "ok"); await loadMasters(); S.dirty = false; HL.back(); } catch (e) { fail(e); }
-      } });
+        try { await HL.post("/api/voucher/status", { id: v.id, status: cancelling ? "cancelled" : (S.status === "posted" ? "posted" : S.status) }); say(cancelling ? "Voucher cancelled." : "Voucher restored.", "ok"); await loadMasters(); S.dirty = false; HL.back(); } catch (e) { fail(e); }
+      };
+      const doDelete = async () => {
+        if (!(await confirmBox("Delete this voucher?", "It is removed for good (a copy is kept in the audit log). To keep it in the records, use Cancel instead.", "Yes, delete it", true))) return;
+        try { await HL.post("/api/voucher/delete", { id: v.id }); say("Voucher deleted.", "ok"); await loadMasters(); S.dirty = false; HL.back(); } catch (e) { fail(e); }
+      };
+      HL.voucherActs = { cancel: toggleCancel, del: doDelete };
+      keys.push({ k: "Alt+D", label: "Delete", fn: doDelete });
+      keys.push({ k: "Alt+X", label: v.status === "cancelled" ? "Restore" : "Cancel", fn: toggleCancel });
       if (v.status === "cancelled") keys[0] = { k: "Ctrl+A", label: "Accept (save)", disabled: true };
     }
     keys.push("sep", { k: "", label: "New ledger", fn: () => HL.ledgerForm({ onsaved: async () => { await loadMasters(); say("Ledger created. Choose it in the list.", "ok"); } }) });
@@ -433,17 +445,17 @@ HL.screens.daybook = {
     typeSel.value = params.vtype || "";
     const filt = h("input", { type: "search", placeholder: "Filter these rows...", "aria-label": "Filter rows", style: "min-width:14rem" });
     const canc = h("input", { type: "checkbox", id: "showc" }); canc.checked = !!params.cancelled;
-    const extra = h("span", { class: "row", style: "gap:.5rem" }, typeSel, filt, h("label", {}, canc, " Show cancelled"));
+    const extra = h("span", { class: "row", style: "gap:.5rem" }, typeSel, filt, h("label", {}, canc, " Show cancelled / optional"));
     const reload = () => { HL.cur.params = Object.assign({}, params, { vtype: typeSel.value, cancelled: canc.checked }); HL.refresh(); };
     typeSel.onchange = reload; canc.onchange = reload;
     const d = await HL.get("/api/daybook", { from: P.from, to: P.to, vtype: typeSel.value, cancelled: canc.checked ? 1 : 0 });
     const root = h("div", {}, h("h1", { class: "title" }, "Day Book"), h("p", { class: "sub" }, periodText()), periodBar(reload, { extra }));
-    const t = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, ["Date", "Particulars", "Activity", "Item", "Type", "No.", "Amount"].map((x, i) => h("th", { class: i === 6 ? "r" : "" }, x)))));
+    const t = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, ["Date", "Particulars", "Cost Centre", "Item", "Type", "No.", "Amount"].map((x, i) => h("th", { class: i === 6 ? "r" : "" }, x)))));
     const tb = h("tbody", {}); t.append(tb);
     const trs = [];
     let lastDate = "";
     d.rows.forEach(r => {
-      const tr = h("tr", { class: "row" + (r.status === "cancelled" ? " cancelled" : ""), tabindex: "0", "data-text": (r.particulars + " " + r.narration + " " + r.items + " " + r.activities + " " + r.vtype + " " + r.ref).toLowerCase(), onclick: () => HL.go("voucher", { id: r.id }) },
+      const tr = h("tr", { class: "row" + (r.status === "cancelled" ? " cancelled" : r.status === "optional" ? " optional" : ""), tabindex: "0", "data-text": (r.particulars + " " + r.narration + " " + r.items + " " + r.activities + " " + r.vtype + " " + r.ref).toLowerCase(), onclick: () => HL.go("voucher", { id: r.id }) },
         h("td", {}, r.date !== lastDate ? showDate(r.date) + (r.date_approx ? " ~" : "") : ""),
         h("td", {}, r.particulars, r.narration ? h("div", { class: "muted", style: "font-size:.85em" }, r.narration) : ""),
         h("td", {}, r.activities), h("td", {}, r.items), h("td", {}, r.vtype), h("td", {}, r.number), h("td", { class: "r" }, inr(r.amount_paise)));

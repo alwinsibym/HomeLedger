@@ -322,3 +322,4 @@ html[data-look="prime"] input:focus, html[data-look="prime"] select:focus, html[
 .goto-list li.on .gh { color: var(--hi-ink); }
 .goto-list li.none { cursor: default; color: var(--ink-3); }
 @media print { #menubar { display: none !important; } }
+table.tbl tr.optional td { font-style: italic; color: var(--ink-3); }
