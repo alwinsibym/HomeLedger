@@ -22,6 +22,8 @@ from . import auth
 from . import backup as bk
 from . import config
 from . import db as dbm
+from . import inventory as inv
+from .money import parse_iso
 from . import reports as rp
 from . import service as sv
 from .errors import UserError
@@ -252,7 +254,6 @@ GET["/api/monthly"] = _reader(lambda c, q: rp.monthly_summary(
     c, q.get("from"), q.get("to"), _int(q, "ledger_id"), _int(q, "group_id")))
 GET["/api/tb"] = _reader(lambda c, q: rp.trial_balance(c, q.get("from"), q.get("to")))
 GET["/api/ratios"] = _reader(lambda c, q: rp.ratio_analysis(c, q.get("from"), q.get("to")))
-GET["/api/stockitems"] = _reader(lambda c, q: sv.list_stock_items(c))
 GET["/api/stocksummary"] = _reader(lambda c, q: rp.stock_summary(c, q.get("from"), q.get("to")))
 GET["/api/bankrec"] = _reader(lambda c, q: rp.bank_reconciliation(c, _int(q, "ledger_id", True), q.get("as_on") or q.get("to")))
 GET["/api/cashflow"] = _reader(lambda c, q: rp.cash_flow(c, q.get("from"), q.get("to")))
@@ -310,6 +311,22 @@ GET["/api/interest"] = _reader(lambda c, q: rp.interest(c, q.get("from"), q.get(
 GET["/api/budgetreport"] = _reader(lambda c, q: sv.budget_report(c, q.get("from"), q.get("to")))
 GET["/api/budgets"] = _reader(lambda c, q: sv.list_budgets(c))
 POST["/api/budget/save"] = _writer(lambda c, b: sv.save_budget(c, b))
+GET["/api/stocklists"] = _reader(lambda c, q: inv.lists(c))
+GET["/api/stockitems"] = _reader(lambda c, q: inv.list_items(c))
+GET["/api/godownsummary"] = _reader(lambda c, q: inv.godown_summary(c, parse_iso(q.get("to") or dt_today())))
+GET["/api/batches"] = _reader(lambda c, q: inv.batch_summary(c, parse_iso(q.get("to") or dt_today()), dt_today()))
+GET["/api/pendingorders"] = _reader(lambda c, q: inv.pending_orders(c))
+GET["/api/prices"] = _reader(lambda c, q: inv.list_prices(c))
+GET["/api/price"] = _reader(lambda c, q: inv.price_for(c, int(q.get("item_id") or 0), q.get("level") or "Standard", q.get("on") or dt_today()))
+GET["/api/boms"] = _reader(lambda c, q: inv.list_boms(c))
+POST["/api/stockitem/save"] = _writer(lambda c, b: inv.save_item(c, b))
+POST["/api/stockgroup/save"] = _writer(lambda c, b: inv.save_stock_group(c, b))
+POST["/api/stockcategory/save"] = _writer(lambda c, b: inv.save_category(c, b))
+POST["/api/godown/save"] = _writer(lambda c, b: inv.save_godown(c, b))
+POST["/api/stockmaster/delete"] = _writer(lambda c, b: inv.delete_master(c, b.get("table"), b.get("id")) or {"ok": True})
+POST["/api/price/set"] = _writer(lambda c, b: inv.set_price(c, b))
+POST["/api/bom/save"] = _writer(lambda c, b: inv.save_bom(c, b))
+POST["/api/bom/delete"] = _writer(lambda c, b: inv.delete_bom(c, b.get("id")) or {"ok": True})
 GET["/api/postdated"] = _reader(lambda c, q: sv.list_postdated(c))
 GET["/api/chequereg"] = _reader(lambda c, q: sv.cheque_register(c, q.get("from"), q.get("to")))
 GET["/api/classes"] = _reader(lambda c, q: sv.list_classes(c))
@@ -317,7 +334,6 @@ POST["/api/voucher/activate"] = _writer(lambda c, b: sv.activate_postdated(c, in
 POST["/api/class/save"] = _writer(lambda c, b: sv.save_class(c, b))
 POST["/api/class/delete"] = _writer(lambda c, b: sv.delete_class(c, int(b.get("id") or 0)) or {"ok": True})
 POST["/api/voucher/delete"] = _writer(lambda c, b: sv.delete_voucher(c, int(b.get("id") or 0)))
-POST["/api/stockitem/save"] = _writer(lambda c, b: sv.save_stock_item(c, b))
 POST["/api/stockitem/delete"] = _writer(lambda c, b: sv.delete_stock_item(c, int(b.get("id") or 0)) or {"ok": True})
 POST["/api/bank/date"] = _writer(lambda c, b: sv.set_bank_date(c, int(b.get("voucher_id") or 0), int(b.get("ledger_id") or 0), b.get("bank_date") or None))
 POST["/api/ledger/save"] = _writer(lambda c, b: sv.save_ledger(c, b))

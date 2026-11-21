@@ -284,7 +284,7 @@ HL.screens.search = {
     const dl = h("datalist", { id: "dl-s-items" }, M().items.map(i => h("option", { value: i.item })));
     const led = picker({ options: () => ledgerOptions({ includeInactive: true }), value: params.ledger_id, placeholder: "Any account" });
     const cc = picker({ options: () => ccOptions(false), value: params.cc_id, placeholder: "Any cost centre" });
-    const vt = h("select", { "aria-label": "Voucher type" }, h("option", { value: "" }, "Any type"), ["Payment", "Receipt", "Contra", "Journal", "Sales", "Purchase", "Credit Note", "Debit Note", "Memorandum", "Reversing Journal"].map(x => h("option", { value: x }, x)));
+    const vt = h("select", { "aria-label": "Voucher type" }, h("option", { value: "" }, "Any type"), ["Payment", "Receipt", "Contra", "Journal", "Sales", "Purchase", "Credit Note", "Debit Note", "Memorandum", "Reversing Journal", "Sales Order", "Purchase Order", "Delivery Note", "Receipt Note", "Stock Journal"].map(x => h("option", { value: x }, x)));
     const amin = h("input", { type: "text", inputmode: "decimal", placeholder: "from ₹", "aria-label": "Minimum amount" }), amax = h("input", { type: "text", inputmode: "decimal", placeholder: "to ₹", "aria-label": "Maximum amount" });
     const all = h("input", { type: "checkbox" });
     const out = h("div", {});

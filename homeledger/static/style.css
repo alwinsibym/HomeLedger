@@ -323,3 +323,7 @@ html[data-look="prime"] input:focus, html[data-look="prime"] select:focus, html[
 .goto-list li.none { cursor: default; color: var(--ink-3); }
 @media print { #menubar { display: none !important; } }
 table.tbl tr.optional td { font-style: italic; color: var(--ink-3); }
+table.items td { padding: .2rem .25rem; vertical-align: middle; }
+table.items select { max-width: 8.5rem; }
+table.items input[type=text] { min-width: 0; }
+.itemsbox { padding: .2rem 0; }

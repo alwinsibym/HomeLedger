@@ -24,6 +24,8 @@ HL.gotoItems = function () {
   add("Budgets", "", () => HL.go("budgets"));
   add("Interest Calculation", "", () => HL.go("interest"));
   add("Scenarios", "", () => HL.go("scenario"));
+  [["Stock Groups", "stockgroups"], ["Stock Categories", "stockcategories"], ["Godowns / Locations", "godowns"], ["Price Lists", "prices"], ["Bills of Material", "boms"], ["Godown Summary", "godownsummary"], ["Batches and Expiry", "batchsummary"], ["Pending Orders", "pendingorders"]].forEach(([n, id]) => add(n, "", () => HL.go(id)));
+  ["Sales Order", "Purchase Order", "Delivery Note", "Receipt Note", "Stock Journal"].forEach(n => add(n, "", () => HL.go("voucher", { vtype: n })));
   add("Cash Flow", "", () => HL.go("cashflow"));
   add("Ratio Analysis", "", () => HL.go("ratios"));
   add("Profit & Loss", "Income less spending", () => HL.go("pnl"));

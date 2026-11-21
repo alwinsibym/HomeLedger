@@ -9,7 +9,7 @@ from pathlib import Path
 
 from .errors import CorruptDatabase, UserError
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 SCHEMA_V4 = """
 CREATE TABLE IF NOT EXISTS bank_clearing (
@@ -72,6 +72,67 @@ SCHEMA_V8 = (
         UNIQUE (kind, target_id, fy)
     )""",
 )
+
+
+SCHEMA_V9 = (
+    """CREATE TABLE IF NOT EXISTS stock_groups (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE, parent_id INTEGER REFERENCES stock_groups(id))""",
+    """CREATE TABLE IF NOT EXISTS stock_categories (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE, parent_id INTEGER REFERENCES stock_categories(id))""",
+    """CREATE TABLE IF NOT EXISTS godowns (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE, parent_id INTEGER REFERENCES godowns(id))""",
+    "INSERT OR IGNORE INTO godowns(id, name) VALUES (1, 'Main Location')",
+    "ALTER TABLE stock_items ADD COLUMN group_id INTEGER REFERENCES stock_groups(id)",
+    "ALTER TABLE stock_items ADD COLUMN category_id INTEGER REFERENCES stock_categories(id)",
+    "ALTER TABLE stock_items ADD COLUMN valuation TEXT NOT NULL DEFAULT 'avg' CHECK (valuation IN ('avg','fifo','lifo','last','std'))",
+    "ALTER TABLE stock_items ADD COLUMN std_rate_paise INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE stock_items ADD COLUMN track_batches INTEGER NOT NULL DEFAULT 0",
+    """CREATE TABLE IF NOT EXISTS voucher_items (
+        id INTEGER PRIMARY KEY,
+        voucher_id INTEGER NOT NULL REFERENCES vouchers(id) ON DELETE CASCADE,
+        line_no INTEGER NOT NULL,
+        item_id INTEGER NOT NULL REFERENCES stock_items(id),
+        godown_id INTEGER NOT NULL DEFAULT 1 REFERENCES godowns(id),
+        dir TEXT NOT NULL CHECK (dir IN ('in','out')),
+        kind TEXT NOT NULL DEFAULT 'normal' CHECK (kind IN ('normal','transfer','consume','produce','order')),
+        batch TEXT NOT NULL DEFAULT '',
+        expiry TEXT,
+        qty_milli INTEGER NOT NULL CHECK (qty_milli > 0),
+        rate_paise INTEGER NOT NULL DEFAULT 0,
+        amount_paise INTEGER NOT NULL DEFAULT 0,
+        order_ref TEXT NOT NULL DEFAULT ''
+    )""",
+    "CREATE INDEX IF NOT EXISTS ix_vitems_item ON voucher_items(item_id)",
+    "CREATE INDEX IF NOT EXISTS ix_vitems_voucher ON voucher_items(voucher_id)",
+    """CREATE TABLE IF NOT EXISTS price_lists (
+        id INTEGER PRIMARY KEY,
+        level TEXT NOT NULL,
+        item_id INTEGER NOT NULL REFERENCES stock_items(id) ON DELETE CASCADE,
+        from_date TEXT NOT NULL,
+        rate_paise INTEGER NOT NULL CHECK (rate_paise >= 0),
+        UNIQUE (level, item_id, from_date)
+    )""",
+    """CREATE TABLE IF NOT EXISTS boms (
+        id INTEGER PRIMARY KEY,
+        product_id INTEGER NOT NULL REFERENCES stock_items(id) ON DELETE CASCADE,
+        name TEXT NOT NULL DEFAULT 'Standard',
+        out_qty_milli INTEGER NOT NULL DEFAULT 1000 CHECK (out_qty_milli > 0),
+        UNIQUE (product_id, name)
+    )""",
+    """CREATE TABLE IF NOT EXISTS bom_lines (
+        id INTEGER PRIMARY KEY,
+        bom_id INTEGER NOT NULL REFERENCES boms(id) ON DELETE CASCADE,
+        item_id INTEGER NOT NULL REFERENCES stock_items(id),
+        qty_milli INTEGER NOT NULL CHECK (qty_milli > 0)
+    )""",
+)
+
+
+def apply_v9(conn):
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(stock_items)")}
+    for stmt in SCHEMA_V9:
+        if stmt.startswith("ALTER TABLE stock_items ADD COLUMN"):
+            col = stmt.split("ADD COLUMN")[1].split()[0]
+            if col in cols:
+                continue
+        conn.execute(stmt)
 
 
 def apply_v8(conn):
@@ -425,6 +486,7 @@ def _create_fresh(path, today=None) -> None:
             apply_v6(conn)
             apply_v7(conn)
             apply_v8(conn)
+            apply_v9(conn)
             _seed(conn, today or dt.date.today())
             conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     finally:
@@ -547,6 +609,8 @@ def init_database(path, log=None) -> None:
                     apply_v7(conn)
                 if ver < 8:
                     apply_v8(conn)
+                if ver < 9:
+                    apply_v9(conn)
                 bad = conn.execute("PRAGMA foreign_key_check").fetchall()
                 if bad:
                     raise sqlite3.IntegrityError("upgrade check failed")

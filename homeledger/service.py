@@ -10,7 +10,8 @@ from .errors import UserError
 from .money import fmt_inr, fy_label, parse_amount, parse_iso, parse_opening, parse_qty
 
 VTYPES = ("Payment", "Receipt", "Contra", "Journal", "Sales", "Purchase", "Credit Note", "Debit Note",
-          "Memorandum", "Reversing Journal")
+          "Memorandum", "Reversing Journal", "Sales Order", "Purchase Order", "Delivery Note", "Receipt Note", "Stock Journal")
+STOCK_ONLY = ("Sales Order", "Purchase Order", "Delivery Note", "Receipt Note", "Stock Journal")   # no accounting lines needed
 NATURES = ("asset", "liability", "income", "expense")
 REAL = ("asset", "liability")
 NOMINAL = ("income", "expense")
@@ -285,7 +286,9 @@ def _prepare(conn, p: dict, existing: dict | None):
             f"The date {show_date(vdate)} is before the books beginning date {show_date(company['books_begin'])}. "
             f"Choose a later date, or change the books beginning date in Company Info.")
     raw = p.get("lines")
-    if not isinstance(raw, list) or not raw:
+    if vtype in STOCK_ONLY and not raw:
+        raw = []
+    elif not isinstance(raw, list) or not raw:
         raise UserError("Please enter at least one line.")
     if len(raw) > 80:
         raise UserError("Too many lines in one voucher (maximum 80).")
@@ -335,7 +338,9 @@ def _prepare(conn, p: dict, existing: dict | None):
         diff = abs(dr_total - cr_total)
         raise UserError(f"The voucher does not balance: debit {fmt_inr(dr_total)} and credit {fmt_inr(cr_total)} "
                         f"differ by {fmt_inr(diff)}.")
-    if not any(l["side"] == "Dr" for l in lines) or not any(l["side"] == "Cr" for l in lines):
+    if vtype in STOCK_ONLY and not lines:
+        pass
+    elif not any(l["side"] == "Dr" for l in lines) or not any(l["side"] == "Cr" for l in lines):
         raise UserError("A voucher needs at least one debit and one credit line.")
     # voucher-type rules (keep transfers and cash handling honest)
     cb = lambda l: l["ledger"]["cb_kind"] is not None
@@ -365,7 +370,7 @@ def _prepare(conn, p: dict, existing: dict | None):
     narration = _txt(p.get("narration"), 500, "Narration")
     ref = _txt(p.get("ref"), 60, "Reference")
     return {"vtype": vtype, "vdate": vdate, "lines": lines, "narration": narration, "ref": ref,
-            "status": ("memo" if vtype == "Memorandum" else p.get("status") if p.get("status") in ("posted", "optional", "memo") else "posted"),
+            "status": ("memo" if vtype in ("Memorandum", "Sales Order", "Purchase Order") else p.get("status") if p.get("status") in ("posted", "optional", "memo") else "posted"),
             "date_approx": 1 if p.get("date_approx") else 0, "fy": fy_label(vdate, company["fy_start_month"])}
 
 
@@ -388,7 +393,13 @@ def get_voucher(conn, vid: int) -> dict:
     return {"id": v["id"], "vtype": v["vtype"], "fy": v["fy"], "number": v["number"], "date": v["vdate"],
             "narration": v["narration"], "ref": v["ref"], "date_approx": bool(v["date_approx"]),
             "status": v["status"], "created_at": v["created_at"], "updated_at": v["updated_at"],
-            "lines": lines, "total_paise": total, "meta": get_meta(conn, vid), "bills": get_bills(conn, vid)}
+            "lines": lines, "total_paise": total, "meta": get_meta(conn, vid), "bills": get_bills(conn, vid),
+            "items": _vitems(conn, vid)}
+
+
+def _vitems(conn, vid: int) -> list:
+    from . import inventory as inv
+    return inv.get_voucher_items(conn, vid)
 
 
 def get_bills(conn, vid: int) -> list:
@@ -487,6 +498,9 @@ def _write_lines(conn, vid, lines):
 def _verify_balanced(conn, vid):
     r = conn.execute("SELECT COALESCE(SUM(debit_paise),0), COALESCE(SUM(credit_paise),0), COUNT(*) "
                      "FROM entries WHERE voucher_id=?", (vid,)).fetchone()
+    vt = conn.execute("SELECT vtype FROM vouchers WHERE id=?", (vid,)).fetchone()[0]
+    if vt in STOCK_ONLY and r[2] == 0:
+        return
     if r[0] != r[1] or r[2] < 2:
         raise UserError("Internal check failed: the voucher did not balance, so nothing was saved.")
 
@@ -526,6 +540,8 @@ def save_voucher(conn, p: dict) -> dict:
         _verify_balanced(conn, vid)
         conn.execute("DELETE FROM bill_refs WHERE voucher_id=?", (vid,))
         _save_bills(conn, vid, d)
+        from . import inventory as inv
+        inv.save_voucher_items(conn, vid, d["vtype"], d["vdate"], p.get("items"))
         if "meta" in p:
             _save_meta(conn, vid, p.get("meta"), d["vdate"])
         after = get_voucher(conn, vid)

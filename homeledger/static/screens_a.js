@@ -32,6 +32,11 @@ HL.menus = (() => {
       ["i", "C", "Cost Centres", "", menu("m_cc")],
       ["i", "V", "Voucher Classes", "Ready-made voucher layouts", go("classes")],
       ["i", "T", "Stock Items", "Things bought and sold by quantity", go("stockitems")],
+      ["i", "W", "Stock Groups", "Group your items", go("stockgroups")],
+      ["i", "Z", "Stock Categories", "A second way to classify items", go("stockcategories")],
+      ["i", "N", "Godowns / Locations", "Where stock is kept", go("godowns")],
+      ["i", "X", "Price Lists", "Rates by price level and date", go("prices")],
+      ["i", "M", "Bills of Material", "What a product is made from", go("boms")],
       ["i", "O", "Opening Balances", "Start-up cash, bank, loans", go("openings")],
       ["i", "I", "Company Info", "Name and books beginning date (F3)", go("company")]] },
     m_groups: cad("Groups", "groups"), m_ledgers: cad("Ledgers", "ledgers"), m_cc: cad("Cost Centres", "activities"),
@@ -48,6 +53,11 @@ HL.menus = (() => {
       ["h", "Other Vouchers (F10)"],
       ["i", "M", "Memorandum", "Ctrl+F10 — kept aside, not in totals", go("voucher", { vtype: "Memorandum" })],
       ["i", "V", "Reversing Journal", "A journal for a temporary adjustment", go("voucher", { vtype: "Reversing Journal" })],
+      ["i", "O", "Sales Order", "Order received, no stock or accounts effect", go("voucher", { vtype: "Sales Order" })],
+      ["i", "H", "Purchase Order", "Order placed, no stock or accounts effect", go("voucher", { vtype: "Purchase Order" })],
+      ["i", "D", "Delivery Note", "Goods sent out, stock only", go("voucher", { vtype: "Delivery Note" })],
+      ["i", "T", "Receipt Note", "Goods received, stock only", go("voucher", { vtype: "Receipt Note" })],
+      ["i", "K", "Stock Journal", "Transfer between godowns, or manufacturing", go("voucher", { vtype: "Stock Journal" })],
       ["h", "Books"],
       ["i", "B", "Day Book", "All entries day by day", go("daybook")]] },
     utilities: { title: "Utilities", items: [
@@ -62,6 +72,9 @@ HL.menus = (() => {
       ["i", "P", "Profit & Loss A/c", "Income less spending", go("pnl")],
       ["i", "T", "Trial Balance", "All ledgers", go("tb")],
       ["i", "S", "Stock Summary", "Quantity and value of stock", go("stocksummary")],
+      ["i", "L", "Godown Summary", "Stock in each place", go("godownsummary")],
+      ["i", "E", "Batches and Expiry", "Stock by batch, soonest expiry first", go("batchsummary")],
+      ["i", "G", "Pending Orders", "Orders not yet delivered or received", go("pendingorders")],
       ["i", "Z", "Post-dated Vouchers", "Future-dated cheques waiting to be activated", go("postdated")],
       ["i", "Q", "Cheque Register", "All cheques, with cheque printing", go("chequereg")],
       ["i", "K", "Bank Reconciliation", "Match entries with the bank statement", go("bankrec")],
@@ -260,6 +273,7 @@ HL.screens.voucher = {
     if (srcId) { v = await HL.get("/api/voucher", { id: srcId }); params = Object.assign({}, params, { vtype: v.vtype }); HL.cur.params = params; }
     const isNew = !params.id;   // a copy is a new voucher that starts from an old one
     const vtype = params.vtype;
+    if (["Sales Order", "Purchase Order", "Delivery Note", "Receipt Note", "Stock Journal"].includes(vtype)) { await HL.stock.load(); return HL.screens.stockvoucher.render(sc, params, params.id ? v : null); }
     const cbOpts = () => ledgerOptions({ test: l => !!l.cb_kind });
     const nonCbOpts = () => ledgerOptions({ test: l => !l.cb_kind });
     const allOpts = () => ledgerOptions();
@@ -421,7 +435,16 @@ HL.screens.voucher = {
       classes.length ? h("label", { class: "f" }, "Voucher class", clsSel) : null,
       bankish ? [h("label", { class: "f" }, "Cheque no.", mNo), h("label", { class: "f" }, "Cheque date", mDt), h("label", { class: "f" }, "Bank", mBk),
         h("label", { class: "f", style: "flex-direction:row;align-items:center;gap:.4rem", title: "The cheque is dated in the future. It stays out of the books until you activate it (Reports > Post-dated Vouchers)" }, mPd, "Post-dated")] : null);
-    body.append(tbl, addBtn, totalBox, metaRow, h("label", { class: "f", style: "margin-top:.6rem" }, "Narration", narr),
+    // stock lines for Sales / Purchase / Credit Note / Debit Note
+    let itemsTable = null, itemsBox = null;
+    if (["Sales", "Purchase", "Credit Note", "Debit Note"].includes(vtype)) {
+      await HL.stock.load();
+      const fill = h("button", { class: "btn", type: "button", title: "Put the items total on the amount boxes that are still empty", onclick: () => { const tot = itemsTable.total(); if (!tot) return; const amts = rows.filter(r => !r.amt.value); amts.forEach(r => { r.amt.value = (tot / 100).toFixed(2); }); if (amts.length) { recalc(); S.dirty = true; say("Items total put on the empty lines.", "ok"); } } }, "Use items total for the amounts");
+      itemsTable = HL.itemsTable({ vtype, getDate: () => S.date, items: v ? v.items.filter(i => i.kind === "normal") : [], extra: fill, onchange: () => { S.dirty = true; } });
+      const hasItems = v && v.items.length;
+      itemsBox = h("details", { class: "panel", style: "margin-top:.8rem", open: !!hasItems }, h("summary", {}, "Stock items in this " + vtype.toLowerCase() + " (optional)"), itemsTable.el);
+    }
+    body.append(tbl, addBtn, totalBox, itemsBox, metaRow, h("label", { class: "f", style: "margin-top:.6rem" }, "Narration", narr),
       h("p", { class: "hint" }, "Tip: Enter moves to the next box. After the last amount, Enter adds another line; Enter on the Narration saves (or press Ctrl+A)."));
     if (!isNew) {
       body.append(h("p", { class: "hint" }, "Entered " + v.created_at.slice(0, 16) + (v.updated_at !== v.created_at ? " · last changed " + v.updated_at.slice(0, 16) : "") + (v.status === "cancelled" ? " · CANCELLED" : "")));
@@ -453,7 +476,7 @@ HL.screens.voucher = {
           const t = lines.reduce((s, l) => s + Math.round(parseFloat(l.amount) * 100), 0);
           lines.push({ ledger_id: acct.value, side: vtype === "Receipt" ? "Dr" : "Cr", amount: (t / 100).toFixed(2) });
         }
-        const res = await HL.post("/api/voucher/save", { id: isNew ? undefined : v.id, vtype, date: S.date, narration: narr.value, status: S.status, ref: refInp.value, date_approx: approx.checked, lines,
+        const res = await HL.post("/api/voucher/save", { id: isNew ? undefined : v.id, vtype, date: S.date, narration: narr.value, status: S.status, ref: refInp.value, date_approx: approx.checked, lines, items: itemsTable ? itemsTable.get() : undefined,
           meta: { inst_no: mNo.value, inst_date: mDt.value.trim() ? (parseDateInput(mDt.value, S.date) || (() => { throw new Error("Please type the cheque date like 15-11-2026."); })()) : null, bank_name: mBk.value, post_dated: mPd.checked, class_name: clsSel.value } });
         S.dirty = false; HL.S.lastVoucherDate = S.date; if (acct && acct.value) HL.S.lastAcct = acct.value;
         say(`${vtype} no. ${res.number} saved (${rs(res.total_paise)}).`, "ok");

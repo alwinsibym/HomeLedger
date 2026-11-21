@@ -356,6 +356,68 @@ class TestVouchers(Base):
         br = sv.budget_report(self.c, f, t)
         self.assertEqual(br["rows"][0]["budget"], 100000)
 
+    def _stock_buy(self, item, date, qty, amount, godown=1, batch="", expiry=None, vtype="Purchase"):
+        from homeledger import inventory as inv
+        return sv.save_voucher(self.c, {"vtype": vtype, "date": date, "lines": [
+            {"ledger_id": self.L["Water Bill"], "side": "Dr", "amount": str(amount)}, {"ledger_id": self.L["Cash"], "side": "Cr", "amount": str(amount)}],
+            "items": [{"item_id": item, "qty": str(qty), "amount": str(amount), "godown_id": godown, "batch": batch, "expiry": expiry}]})
+
+    def test_inventory_valuation_methods(self):
+        from homeledger import inventory as inv
+        res = {}
+        for meth in ("avg", "fifo", "lifo", "last", "std"):
+            iid = inv.save_item(self.c, {"name": "Item-" + meth, "unit": "kg", "valuation": meth, "std_rate": "7" if meth == "std" else ""})["id"]
+            self._stock_buy(iid, "2026-05-01", 10, 100)          # 10 kg at 10
+            self._stock_buy(iid, "2026-06-01", 10, 200)          # 10 kg at 20
+            sv.save_voucher(self.c, {"vtype": "Sales", "date": "2026-07-01", "lines": [
+                {"ledger_id": self.L["Cash"], "side": "Dr", "amount": "500"}, {"ledger_id": self.L["Water Bill"], "side": "Cr", "amount": "500"}],
+                "items": [{"item_id": iid, "qty": "5", "amount": "500"}]})                       # sell 5 kg
+            row = [r for r in rp.stock_summary(self.c, "2026-04-01", "2027-03-31")["rows"] if r["item_id"] == iid][0]
+            res[meth] = (row["close_q"], row["close_v"], row["out_v"])
+        self.assertEqual(res["avg"], (15000, 22500, 7500))       # avg 15/kg
+        self.assertEqual(res["fifo"], (15000, 25000, 5000))      # sold the 10/kg ones
+        self.assertEqual(res["lifo"], (15000, 20000, 10000))     # sold the 20/kg ones
+        self.assertEqual(res["last"], (15000, 30000, 10000))     # everything at last cost 20
+        self.assertEqual(res["std"], (15000, 10500, 3500))       # everything at 7
+
+    def test_inventory_godowns_batches_transfer_manufacture_orders(self):
+        from homeledger import inventory as inv
+        wh = inv.save_godown(self.c, {"name": "Shed"})["id"]
+        flour = inv.save_item(self.c, {"name": "Flour", "unit": "kg", "track_batches": True})["id"]
+        bread = inv.save_item(self.c, {"name": "Bread", "unit": "nos"})["id"]
+        with self.assertRaises(UserError):                         # batch tracked: batch needed
+            self._stock_buy(flour, "2026-05-01", 100, 2000)
+        self._stock_buy(flour, "2026-05-01", 100, 2000, batch="B1", expiry="2026-12-01")
+        # transfer 40 kg to the shed
+        sv.save_voucher(self.c, {"vtype": "Stock Journal", "date": "2026-05-02", "items": [
+            {"item_id": flour, "qty": "40", "godown_id": 1, "godown_to_id": wh, "kind": "transfer", "batch": "B1"}]})
+        gs = {(x["godown"], x["item"]): x["qty"] for x in inv.godown_summary(self.c, "2027-03-31")}
+        self.assertEqual((gs[("Main Location", "Flour")], gs[("Shed", "Flour")]), (60000, 40000))
+        self.assertEqual({r["name"]: r for r in rp.stock_summary(self.c, "2026-04-01", "2027-03-31")["rows"]}["Flour"]["close_v"], 200000)   # value unchanged by transfer
+        # manufacture: 50 kg flour -> 100 bread; cost of flour carries to the bread
+        sv.save_voucher(self.c, {"vtype": "Stock Journal", "date": "2026-05-03", "items": [
+            {"item_id": flour, "qty": "50", "kind": "consume", "batch": "B1"}, {"item_id": bread, "qty": "100", "kind": "produce"}]})
+        rows = {r["name"]: r for r in rp.stock_summary(self.c, "2026-04-01", "2027-03-31")["rows"]}
+        self.assertEqual((rows["Bread"]["close_q"], rows["Bread"]["close_v"]), (100000, 100000))
+        self.assertEqual(rows["Flour"]["close_q"], 50000)
+        b = inv.batch_summary(self.c, "2027-03-31", "2026-11-21")[0]
+        self.assertEqual((b["batch"], b["qty"], b["days_left"]), ("B1", 50000, 10))
+        # orders do not move stock; a delivery against the order reduces what is pending
+        so = sv.save_voucher(self.c, {"vtype": "Sales Order", "date": "2026-05-04", "items": [{"item_id": bread, "qty": "60", "rate": "15"}]})
+        self.assertEqual(so["status"], "memo")
+        self.assertEqual(rows["Bread"]["close_q"], 100000)
+        self.assertEqual(inv.pending_orders(self.c)[0]["pending"], 60000)
+        sv.save_voucher(self.c, {"vtype": "Delivery Note", "date": "2026-05-05", "items": [{"item_id": bread, "qty": "25", "order_ref": str(so["number"])}]})
+        self.assertEqual(inv.pending_orders(self.c)[0]["pending"], 35000)
+        self.assertEqual({r["name"]: r for r in rp.stock_summary(self.c, "2026-04-01", "2027-03-31")["rows"]}["Bread"]["close_q"], 75000)
+        # price list and bad input
+        inv.set_price(self.c, {"level": "Retail", "item_id": bread, "from_date": "2026-05-01", "rate": "18"})
+        self.assertEqual(inv.price_for(self.c, bread, "Retail", "2026-06-01")["rate_paise"], 1800)
+        with self.assertRaises(UserError):
+            sv.save_voucher(self.c, {"vtype": "Payment", "date": "2026-05-06", "lines": [
+                {"ledger_id": self.L["Water Bill"], "side": "Dr", "amount": "1"}, {"ledger_id": self.L["Cash"], "side": "Cr", "amount": "1"}],
+                "items": [{"item_id": bread, "qty": "0"}]})
+
     def test_database_refuses_bad_rows_directly(self):
         v = self.pay("2026-11-10", "Water Bill", 100)
         with self.assertRaises(sqlite3.IntegrityError):   # both sides on one line
