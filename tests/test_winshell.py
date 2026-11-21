@@ -17,6 +17,7 @@ class TestTaskbarIdentity(unittest.TestCase):
             hwnd = winshell._find_window()
             self.assertTrue(hwnd, "window not found by title")
             self.assertTrue(winshell._set_props(hwnd, sys.executable))
+            self.assertEqual(winshell._find_windows(), [])   # a Tk window is not a browser window: never mistaken for HomeLedger
         finally:
             root.destroy()
 

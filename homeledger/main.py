@@ -111,7 +111,9 @@ def run(argv=None) -> int:
         known = None
     if known and ping(known):
         if not no_window:
-            open_window(f"http://127.0.0.1:{known}/")
+            from . import winshell
+            if not winshell.show_existing_window():       # already open: just bring it forward, never a second window
+                open_window(f"http://127.0.0.1:{known}/")
         return 0
 
     db_file = config.db_path()

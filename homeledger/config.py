@@ -3,7 +3,7 @@ import os
 import sys
 from pathlib import Path
 
-VERSION = "1.6.1"
+VERSION = "1.6.2"
 APP_NAME = "HomeLedger"
 DEFAULT_PORT = int(os.environ.get("HOMELEDGER_PORT", "8765"))
 PORT_RANGE = 10  # tries DEFAULT_PORT .. DEFAULT_PORT + PORT_RANGE - 1

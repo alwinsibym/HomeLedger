@@ -21,6 +21,11 @@ SetupIconFile=..\homeledger.ico
 UninstallDisplayIcon={app}\HomeLedger.exe
 UninstallDisplayName=HomeLedger
 WizardStyle=modern
+WizardImageFile=art\side.bmp,art\side2.bmp
+WizardSmallImageFile=art\small.bmp,art\small2.bmp
+WizardImageAlphaFormat=none
+DisableWelcomePage=no
+ShowLanguageDialog=no
 Compression=lzma2
 SolidCompression=yes
 ArchitecturesAllowed=x64compatible
@@ -30,8 +35,20 @@ CloseApplications=no
 VersionInfoVersion={#AppVersion}
 VersionInfoProductName=HomeLedger
 
+[Messages]
+WelcomeLabel1=Welcome to HomeLedger
+WelcomeLabel2=HomeLedger keeps your accounts the way Tally does: Gateway menu, vouchers, ledgers, reports and keyboard shortcuts.%n%nIt works completely offline. Your books stay on this computer.%n%nClick Next to continue.
+FinishedHeadingLabel=HomeLedger is ready
+FinishedLabel=HomeLedger has been installed on this computer.%n%nTip: to keep it on the taskbar, open HomeLedger, right-click its icon on the taskbar and choose "Pin to taskbar". Windows does not allow installers to do this for you.
+ClickFinish=Click Finish to close Setup.
+
 [Tasks]
 Name: "desktopicon"; Description: "Create a &Desktop icon"; GroupDescription: "Shortcuts:"
+Name: "startmenuicon"; Description: "Add HomeLedger to the &Start menu"; GroupDescription: "Shortcuts:"
+
+[UninstallDelete]
+Type: filesandordirs; Name: "{localappdata}\HomeLedger\window-profile"
+Type: filesandordirs; Name: "{app}"
 
 [Files]
 Source: "..\dist\HomeLedger\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
@@ -39,8 +56,8 @@ Source: "..\homeledger.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\README.txt"; DestDir: "{app}"; Flags: ignoreversion isreadme
 
 [Icons]
-Name: "{autoprograms}\HomeLedger"; Filename: "{app}\HomeLedger.exe"; IconFilename: "{app}\homeledger.ico"; AppUserModelID: "HomeLedger.App"; Comment: "Household and farm accounts"
-Name: "{autoprograms}\Uninstall HomeLedger"; Filename: "{uninstallexe}"
+Name: "{autoprograms}\HomeLedger"; Filename: "{app}\HomeLedger.exe"; IconFilename: "{app}\homeledger.ico"; AppUserModelID: "HomeLedger.App"; Comment: "Accounts and vouchers"; Tasks: startmenuicon
+Name: "{autoprograms}\Uninstall HomeLedger"; Filename: "{uninstallexe}"; Tasks: startmenuicon
 Name: "{autodesktop}\HomeLedger"; Filename: "{app}\HomeLedger.exe"; IconFilename: "{app}\homeledger.ico"; AppUserModelID: "HomeLedger.App"; Tasks: desktopicon
 
 [Run]
@@ -64,6 +81,19 @@ begin
   { HomeLedger saves after every entry and survives a sudden stop, so closing it here is safe }
   Exec(ExpandConstant('{sys}\taskkill.exe'), '/IM HomeLedger.exe /F', '', SW_HIDE, ewWaitUntilTerminated, rc);
   Sleep(600);
+end;
+
+procedure CurInstallProgressChanged(CurProgress, MaxProgress: Integer);
+var
+  pct: Integer;
+begin
+  if MaxProgress <= 0 then Exit;
+  pct := (CurProgress * 100) div MaxProgress;
+  if pct < 15 then WizardForm.FilenameLabel.Caption := 'Preparing the Gateway of HomeLedger...'
+  else if pct < 40 then WizardForm.FilenameLabel.Caption := 'Setting up ledgers, groups and vouchers...'
+  else if pct < 65 then WizardForm.FilenameLabel.Caption := 'Adding reports and keyboard shortcuts...'
+  else if pct < 90 then WizardForm.FilenameLabel.Caption := 'Making backups and security ready...'
+  else WizardForm.FilenameLabel.Caption := 'Almost done...';
 end;
 
 function InitializeSetup: Boolean;
@@ -91,7 +121,7 @@ procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if (CurUninstallStep = usPostUninstall) and (not UninstallSilent) then
   begin
-    if MsgBox('HomeLedger has been removed.' + #13#10#13#10 +
+    if MsgBox('HomeLedger has been removed, together with its shortcuts and program files.' + #13#10#13#10 +
               'Your accounts and automatic backups are still stored on this computer in:' + #13#10 +
               ExpandConstant('{localappdata}\HomeLedger') + #13#10#13#10 +
               'Do you also want to DELETE that data permanently?' + #13#10 +

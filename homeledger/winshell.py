@@ -68,7 +68,8 @@ def _set_props(hwnd: int, exe: str) -> bool:
     return True
 
 
-def _find_window(pid_hint=None) -> int:
+def _find_windows() -> list:
+    """All visible browser windows showing HomeLedger (class check keeps a folder called 'HomeLedger' out)."""
     import ctypes
     from ctypes import wintypes
     user32 = ctypes.windll.user32
@@ -82,10 +83,38 @@ def _find_window(pid_hint=None) -> int:
                 buf = ctypes.create_unicode_buffer(n + 1)
                 user32.GetWindowTextW(hwnd, buf, n + 1)
                 if "HomeLedger" in buf.value:
-                    found.append(hwnd)
+                    cls = ctypes.create_unicode_buffer(256)
+                    user32.GetClassNameW(hwnd, cls, 256)
+                    if cls.value.startswith("Chrome_WidgetWin"):
+                        found.append(hwnd)
         return True
     user32.EnumWindows(EnumProc(cb), 0)
-    return found[0] if found else 0
+    return found
+
+
+def _find_window() -> int:
+    f = _find_windows()
+    return f[0] if f else 0
+
+
+def show_existing_window() -> bool:
+    """If HomeLedger is already open, bring it to the front (restoring it if minimised) and say so."""
+    if os.name != "nt":
+        return False
+    try:
+        import ctypes
+        hwnd = _find_window()
+        if not hwnd:
+            return False
+        user32 = ctypes.windll.user32
+        if user32.IsIconic(hwnd):
+            user32.ShowWindow(hwnd, 9)          # SW_RESTORE
+        user32.keybd_event(0x12, 0, 0, 0)       # a tap of Alt lets Windows allow the focus change
+        user32.keybd_event(0x12, 0, 2, 0)
+        user32.SetForegroundWindow(hwnd)
+        return True
+    except Exception:
+        return False
 
 
 def brand_window_async(timeout: float = 25.0) -> None:
@@ -101,13 +130,15 @@ def brand_window_async(timeout: float = 25.0) -> None:
             end = time.time() + timeout
             done = set()
             while time.time() < end:
-                hwnd = _find_window()
-                if hwnd and hwnd not in done:
-                    if _set_props(hwnd, exe):
-                        done.add(hwnd)
-                        logging.getLogger("homeledger").info("taskbar identity set")
+                wins = _find_windows()
+                if wins:
+                    for hwnd in wins:
+                        if _set_props(hwnd, exe):
+                            done.add(hwnd)
+                    logging.getLogger("homeledger").info("taskbar identity set")
                     time.sleep(1.0)
-                    _set_props(hwnd, exe)                       # once more in case the browser reset it
+                    for hwnd in _find_windows():
+                        _set_props(hwnd, exe)                   # once more in case the browser reset it
                     return
                 time.sleep(0.4)
         except Exception:
