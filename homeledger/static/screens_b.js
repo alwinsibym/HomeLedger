@@ -386,3 +386,42 @@ HL.screens.cashflow = {
     HL.setKeys([BACK]);
   },
 };
+
+
+HL.screens.bankrec = {
+  title: "Bank Reconciliation",
+  async render(sc, params) {
+    await loadMasters();
+    const P = getPeriod();
+    const banks = HL.S.masters.ledgers.filter(l => l.cb_kind === "bank" && l.is_active !== 0);
+    const root = h("div", {}, h("h1", { class: "title" }, "Bank Reconciliation"));
+    if (!banks.length) { root.append(h("div", { class: "panel empty" }, "There is no bank account yet. Create a ledger under Bank Accounts first.")); sc.replaceChildren(root); HL.setKeys([BACK]); return; }
+    const sel = h("select", { "aria-label": "Bank account" }, banks.map(b => h("option", { value: b.id }, b.name)));
+    sel.value = String(params.ledger_id || banks[0].id);
+    sel.onchange = () => { HL.cur.params = Object.assign({}, params, { ledger_id: sel.value }); HL.refresh(); };
+    const r = await HL.get("/api/bankrec", { ledger_id: sel.value, to: P.to });
+    root.append(h("p", { class: "sub" }, "As on " + showDate(r.as_on) + " · type the date the bank processed each entry (from your statement); leave empty if it has not cleared"), periodBar(() => HL.refresh(), { extra: sel }));
+    const t = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, ["Date", "Type", "No.", "Reference", "Debit", "Credit", "Bank date"].map((x, i) => h("th", { class: i === 4 || i === 5 ? "r" : "" }, x)))));
+    const tb = h("tbody", {}); t.append(tb);
+    r.rows.forEach(x => {
+      const inp = h("input", { type: "text", value: x.bank_date ? showDate(x.bank_date) : "", style: "width:9rem", "aria-label": "Bank date", placeholder: "dd-mm-yyyy" });
+      inp.addEventListener("change", async () => {
+        try {
+          const iso = inp.value.trim() ? parseDateInput(inp.value, x.vdate) : "";
+          if (inp.value.trim() && !iso) { say("Please type the date like 15-11-2026.", "err"); return; }
+          await HL.post("/api/bank/date", { voucher_id: x.vid, ledger_id: r.ledger_id, bank_date: iso });
+          HL.refresh();
+        } catch (e) { say(e.message || "Could not save.", "err"); }
+      });
+      tb.append(h("tr", { class: x.cleared ? "" : "optional" }, h("td", {}, showDate(x.vdate)), h("td", {}, x.vtype), h("td", {}, x.number), h("td", {}, x.ref || x.narration || ""),
+        h("td", { class: "r" }, x.dr ? inr(x.dr) : ""), h("td", { class: "r" }, x.cr ? inr(x.cr) : ""), h("td", {}, inp)));
+    });
+    if (!r.rows.length) tb.append(h("tr", {}, h("td", { colspan: 7, class: "empty" }, "No entries in this bank account yet.")));
+    const sum = h("table", { class: "tbl", style: "max-width:34rem;margin-top:1rem" }, h("tbody", {},
+      h("tr", {}, h("td", {}, "Balance as per company books"), h("td", { class: "r" }, bal(r.books))),
+      h("tr", {}, h("td", {}, "Amounts not yet reflected in bank"), h("td", { class: "r" }, bal(r.uncleared_net))),
+      h("tr", { class: "total" }, h("td", {}, "Balance as per bank (should match the statement)"), h("td", { class: "r" }, bal(r.bank)))));
+    root.append(t, sum);
+    sc.replaceChildren(root); HL.setKeys([BACK]);
+  },
+};

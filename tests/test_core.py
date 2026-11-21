@@ -246,6 +246,22 @@ class TestVouchers(Base):
         self.assertTrue(r["check"])
         self.assertEqual((r["total_in"], r["total_out"]), (3000, 10000))
 
+    def test_bank_reconciliation(self):
+        v = self.rec("2026-11-10", "Water Bill", 500)
+        bank = self.L["Bank Account"]
+        r = rp.bank_reconciliation(self.c, bank, "2026-11-30")
+        self.assertEqual((r["books"], r["bank"]), (50000, 0))
+        sv.set_bank_date(self.c, v["id"], bank, "2026-11-12")
+        r = rp.bank_reconciliation(self.c, bank, "2026-11-30")
+        self.assertEqual((r["books"], r["bank"]), (50000, 50000))
+        sv.save_voucher(self.c, {"id": v["id"], "vtype": "Receipt", "date": "2026-11-10", "lines": [   # altering keeps the mark
+            {"ledger_id": self.L["Water Bill"], "side": "Cr", "amount": "600"}, {"ledger_id": bank, "side": "Dr", "amount": "600"}]})
+        self.assertEqual(rp.bank_reconciliation(self.c, bank, "2026-11-30")["bank"], 60000)
+        with self.assertRaises(UserError):
+            sv.set_bank_date(self.c, v["id"], self.L["Cash"], "2026-11-12")
+        sv.set_bank_date(self.c, v["id"], bank, "")
+        self.assertEqual(rp.bank_reconciliation(self.c, bank, "2026-11-30")["bank"], 0)
+
     def test_database_refuses_bad_rows_directly(self):
         v = self.pay("2026-11-10", "Water Bill", 100)
         with self.assertRaises(sqlite3.IntegrityError):   # both sides on one line

@@ -779,3 +779,26 @@ def cash_flow(conn, frm, to) -> dict:
     return {"from": frm, "to": to, "opening": opening, "closing": closing,
             "inflow": sorted(inflow.items()), "outflow": sorted(outflow.items()),
             "total_in": tin, "total_out": tout, "check": opening + tin - tout == closing}
+
+
+def bank_reconciliation(conn, ledger_id: int, as_on: str) -> dict:
+    """Which entries in a bank ledger the bank has processed, and what the statement balance should be."""
+    as_on = parse_iso(as_on)
+    led = conn.execute("SELECT id, name, cb_kind, opening_paise, opening_type FROM ledgers WHERE id=?", (ledger_id,)).fetchone()
+    if not led or led["cb_kind"] != "bank":
+        raise UserError("Choose a bank account.")
+    opening = led["opening_paise"] if led["opening_type"] == "Dr" else -led["opening_paise"]
+    rows, books = [], opening
+    for r in conn.execute(
+            """SELECT v.id AS vid, v.vdate, v.vtype, v.number, v.ref, v.narration, SUM(e.debit_paise) AS dr, SUM(e.credit_paise) AS cr,
+                      b.bank_date FROM entries e JOIN vouchers v ON v.id=e.voucher_id AND v.status='posted'
+               LEFT JOIN bank_clearing b ON b.voucher_id=v.id AND b.ledger_id=e.ledger_id
+               WHERE e.ledger_id=? AND v.vdate<=? GROUP BY v.id ORDER BY v.vdate, v.id""", (ledger_id, as_on)):
+        d = dict(r)
+        books += d["dr"] - d["cr"]
+        d["cleared"] = bool(d["bank_date"]) and d["bank_date"] <= as_on
+        rows.append(d)
+    uncleared = [r for r in rows if not r["cleared"]]
+    unc_net = sum(r["dr"] - r["cr"] for r in uncleared)
+    return {"ledger_id": led["id"], "name": led["name"], "as_on": as_on, "rows": rows,
+            "books": books, "uncleared_net": unc_net, "bank": books - unc_net}

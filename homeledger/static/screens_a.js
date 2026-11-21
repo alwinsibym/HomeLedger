@@ -53,6 +53,7 @@ HL.menus = (() => {
       ["i", "B", "Balance Sheet", "What you own and owe", go("bs")],
       ["i", "P", "Profit & Loss A/c", "Income less spending", go("pnl")],
       ["i", "T", "Trial Balance", "All ledgers", go("tb")],
+      ["i", "K", "Bank Reconciliation", "Match entries with the bank statement", go("bankrec")],
       ["i", "F", "Cash Flow", "Money in and out by account type", go("cashflow")],
       ["i", "O", "Outstandings: Receivable", "Who owes you, with ageing", go("receivables")],
       ["i", "Y", "Outstandings: Payable", "Whom you owe, with ageing", go("payables")],

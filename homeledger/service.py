@@ -540,3 +540,19 @@ def day_book(conn, frm: str, to: str, vtype: str | None = None, include_cancelle
         if v["status"] == "posted":
             tdr += v["total_paise"]
     return {"rows": rows, "total_paise": tdr, "truncated": truncated}
+
+
+def set_bank_date(conn, voucher_id: int, ledger_id: int, bank_date) -> dict:
+    """Mark a bank entry as processed by the bank on a date (or clear the mark with an empty date)."""
+    with dbm.write_tx(conn):
+        ok = conn.execute("""SELECT 1 FROM entries e JOIN ledgers l ON l.id=e.ledger_id
+                             WHERE e.voucher_id=? AND e.ledger_id=? AND l.cb_kind='bank'""", (voucher_id, ledger_id)).fetchone()
+        if not ok:
+            raise UserError("That entry is not in a bank account.")
+        if bank_date:
+            conn.execute("INSERT OR REPLACE INTO bank_clearing(voucher_id, ledger_id, bank_date) VALUES (?,?,?)",
+                         (voucher_id, ledger_id, parse_iso(bank_date, "Bank date")))
+        else:
+            conn.execute("DELETE FROM bank_clearing WHERE voucher_id=? AND ledger_id=?", (voucher_id, ledger_id))
+        dbm.audit(conn, "bank_date", "voucher", voucher_id, json.dumps({"ledger": ledger_id, "bank_date": bank_date or None}))
+    return {"ok": True}
