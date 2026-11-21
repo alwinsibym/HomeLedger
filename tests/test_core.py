@@ -239,6 +239,13 @@ class TestVouchers(Base):
         with self.assertRaises(UserError):
             rp.outstanding(self.c, "x", "2026-11-20")
 
+    def test_cash_flow(self):
+        self.pay("2026-11-10", "Water Bill", 100)
+        self.rec("2026-11-11", "Water Bill", 30, acct="Cash")
+        r = rp.cash_flow(self.c, "2026-04-01", "2027-03-31")
+        self.assertTrue(r["check"])
+        self.assertEqual((r["total_in"], r["total_out"]), (3000, 10000))
+
     def test_database_refuses_bad_rows_directly(self):
         v = self.pay("2026-11-10", "Water Bill", 100)
         with self.assertRaises(sqlite3.IntegrityError):   # both sides on one line

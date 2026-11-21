@@ -252,6 +252,7 @@ GET["/api/monthly"] = _reader(lambda c, q: rp.monthly_summary(
     c, q.get("from"), q.get("to"), _int(q, "ledger_id"), _int(q, "group_id")))
 GET["/api/tb"] = _reader(lambda c, q: rp.trial_balance(c, q.get("from"), q.get("to")))
 GET["/api/ratios"] = _reader(lambda c, q: rp.ratio_analysis(c, q.get("from"), q.get("to")))
+GET["/api/cashflow"] = _reader(lambda c, q: rp.cash_flow(c, q.get("from"), q.get("to")))
 GET["/api/outstanding"] = _reader(lambda c, q: rp.outstanding(c, q.get("kind", "receivable"), q.get("as_on") or q.get("to")))
 GET["/api/pnl"] = _reader(lambda c, q: rp.profit_and_loss(c, q.get("from"), q.get("to")))
 GET["/api/bs"] = _reader(lambda c, q: rp.balance_sheet(c, q.get("from"), q.get("to")))

@@ -748,3 +748,34 @@ def outstanding(conn, kind: str, as_on: str) -> dict:
                     "oldest": None if oldest in (None, "0001-01-01") else oldest, "brought_forward": oldest == "0001-01-01"})
     return {"kind": kind, "as_on": as_on, "rows": out, "total": sum(total), "buckets": total,
             "note": "Matched oldest-first. Opening balances count as the oldest amount."}
+
+
+def cash_flow(conn, frm, to) -> dict:
+    """Cash and bank movement in the period, grouped by the kind of account on the other side of each voucher."""
+    frm, to = _period(frm, to)
+    rows = ledger_rows(conn, frm, to)
+    opening = sum(r["opening"] for r in rows if r["cb_kind"])
+    closing = sum(r["closing"] for r in rows if r["cb_kind"])
+    gname = {g["id"]: g["name"] for g in _groups(conn)}
+    inflow, outflow = {}, {}
+    vids = [r[0] for r in conn.execute(
+        """SELECT DISTINCT v.id FROM vouchers v JOIN entries e ON e.voucher_id=v.id JOIN ledgers l ON l.id=e.ledger_id
+           WHERE v.status='posted' AND v.vdate BETWEEN ? AND ? AND l.cb_kind IS NOT NULL""", (frm, to))]
+    for vid in vids:
+        ents = [dict(r) for r in conn.execute(
+            "SELECT e.debit_paise-e.credit_paise AS net, l.cb_kind, l.group_id FROM entries e JOIN ledgers l ON l.id=e.ledger_id WHERE e.voucher_id=?", (vid,))]
+        if all(e["cb_kind"] for e in ents):
+            continue                                   # money only moved between cash and bank
+        for e in ents:
+            if e["cb_kind"]:
+                continue
+            amt = -e["net"]                            # other side's credit = money in
+            name = gname[e["group_id"]]
+            if amt > 0:
+                inflow[name] = inflow.get(name, 0) + amt
+            elif amt < 0:
+                outflow[name] = outflow.get(name, 0) - amt
+    tin, tout = sum(inflow.values()), sum(outflow.values())
+    return {"from": frm, "to": to, "opening": opening, "closing": closing,
+            "inflow": sorted(inflow.items()), "outflow": sorted(outflow.items()),
+            "total_in": tin, "total_out": tout, "check": opening + tin - tout == closing}

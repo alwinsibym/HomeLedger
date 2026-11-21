@@ -364,3 +364,25 @@ function outstandingScreen(kind, title) {
 }
 HL.screens.receivables = outstandingScreen("receivable", "Bills Receivable (Outstanding)");
 HL.screens.payables = outstandingScreen("payable", "Bills Payable (Outstanding)");
+
+
+HL.screens.cashflow = {
+  title: "Cash Flow",
+  async render(sc) {
+    await loadMasters();
+    const P = getPeriod();
+    const r = await HL.get("/api/cashflow", { from: P.from, to: P.to });
+    const t = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, h("th", {}, "Particulars"), h("th", { class: "r" }, "Amount"))));
+    const tb = h("tbody", {}); t.append(tb);
+    const line = (n, v, cls) => tb.append(h("tr", { class: cls || "" }, h("td", { class: cls ? "" : "ind1" }, n), h("td", { class: "r" }, inr(v))));
+    line("Opening Cash and Bank", r.opening, "grp");
+    tb.append(h("tr", { class: "grp" }, h("td", {}, "Money received from"), h("td", {})));
+    r.inflow.forEach(x => line(x[0], x[1])); line("Total received", r.total_in, "total");
+    tb.append(h("tr", { class: "grp" }, h("td", {}, "Money paid to"), h("td", {})));
+    r.outflow.forEach(x => line(x[0], x[1])); line("Total paid", r.total_out, "total");
+    line("Closing Cash and Bank", r.closing, "grp");
+    sc.replaceChildren(h("div", {}, h("h1", { class: "title" }, "Cash Flow"), h("p", { class: "sub" }, periodText() + " · movement through Cash and Bank, by the account on the other side"), periodBar(() => HL.refresh()), t,
+      h("div", { class: "banner " + (r.check ? "ok" : "err") }, r.check ? "Opening + received - paid equals closing." : "These figures do not add up. Open Utilities > Health Check.")));
+    HL.setKeys([BACK]);
+  },
+};

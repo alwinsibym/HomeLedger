@@ -11,6 +11,7 @@ HL.gotoItems = function () {
   add("Trial Balance", "", () => HL.go("tb"));
   add("Outstandings: Receivable", "", () => HL.go("receivables"));
   add("Outstandings: Payable", "", () => HL.go("payables"));
+  add("Cash Flow", "", () => HL.go("cashflow"));
   add("Ratio Analysis", "", () => HL.go("ratios"));
   add("Profit & Loss", "Income less spending", () => HL.go("pnl"));
   add("Balance Sheet", "What you own and owe", () => HL.go("bs"));
