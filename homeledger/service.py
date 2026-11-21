@@ -9,7 +9,8 @@ from . import db as dbm
 from .errors import UserError
 from .money import fmt_inr, fy_label, parse_amount, parse_iso, parse_opening, parse_qty
 
-VTYPES = ("Payment", "Receipt", "Contra", "Journal", "Sales", "Purchase", "Credit Note", "Debit Note")
+VTYPES = ("Payment", "Receipt", "Contra", "Journal", "Sales", "Purchase", "Credit Note", "Debit Note",
+          "Memorandum", "Reversing Journal")
 NATURES = ("asset", "liability", "income", "expense")
 REAL = ("asset", "liability")
 NOMINAL = ("income", "expense")
@@ -355,7 +356,7 @@ def _prepare(conn, p: dict, existing: dict | None):
     elif vtype == "Contra":
         if any(not cb(l) for l in lines):
             raise UserError("A Contra can only use Cash and Bank accounts (moving money between them).")
-    elif vtype == "Journal":
+    elif vtype in ("Journal", "Reversing Journal"):
         if any(cb(l) for l in lines):
             raise UserError("A Journal cannot use Cash or Bank accounts. Use Payment (F5) or Receipt (F6).")
     elif vtype in ("Credit Note", "Debit Note"):
@@ -364,7 +365,7 @@ def _prepare(conn, p: dict, existing: dict | None):
     narration = _txt(p.get("narration"), 500, "Narration")
     ref = _txt(p.get("ref"), 60, "Reference")
     return {"vtype": vtype, "vdate": vdate, "lines": lines, "narration": narration, "ref": ref,
-            "status": (p.get("status") if p.get("status") in ("posted", "optional", "memo") else "posted"),
+            "status": ("memo" if vtype == "Memorandum" else p.get("status") if p.get("status") in ("posted", "optional", "memo") else "posted"),
             "date_approx": 1 if p.get("date_approx") else 0, "fy": fy_label(vdate, company["fy_start_month"])}
 
 

@@ -208,6 +208,14 @@ class TestVouchers(Base):
         self.assertEqual(self.c.execute("select count(*) from entries").fetchone()[0], 0)
         self.assertEqual(self.c.execute("select action from audit_log order by id desc limit 1").fetchone()[0], "delete")
 
+    def test_memorandum_and_reversing_journal(self):
+        lines = [{"ledger_id": self.L["Water Bill"], "side": "Dr", "amount": "50"}, {"ledger_id": self.L["Cash"], "side": "Cr", "amount": "50"}]
+        m = sv.save_voucher(self.c, {"vtype": "Memorandum", "date": "2026-11-10", "lines": lines})
+        self.assertEqual(m["status"], "memo")
+        self.assertEqual(rp.trial_balance(self.c, "2026-04-01", "2027-03-31")["total_dr"], 0)
+        with self.assertRaises(UserError):   # cash not allowed in a reversing journal
+            sv.save_voucher(self.c, {"vtype": "Reversing Journal", "date": "2026-11-10", "lines": lines})
+
     def test_database_refuses_bad_rows_directly(self):
         v = self.pay("2026-11-10", "Water Bill", 100)
         with self.assertRaises(sqlite3.IntegrityError):   # both sides on one line

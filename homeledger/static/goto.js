@@ -18,7 +18,7 @@ HL.gotoItems = function () {
   add("Company Info", "Name and books beginning date", () => HL.go("company"));
   [["backup", "Backup & Restore"], ["health", "Health Check"], ["export", "Export to Excel"], ["settings", "Settings (text size, look)"], ["security", "Security (sign-in)"], ["audit", "Audit Trail"]]
     .forEach(([k, l]) => add(l, "Utilities", () => HL.go("utilities", { tab: k })));
-  [["Payment", "F5"], ["Receipt", "F6"], ["Contra", "F4"], ["Journal", "F7"], ["Sales", "F8"], ["Purchase", "F9"], ["Credit Note", "Ctrl+F8"], ["Debit Note", "Ctrl+F9"]]
+  [["Payment", "F5"], ["Receipt", "F6"], ["Contra", "F4"], ["Journal", "F7"], ["Sales", "F8"], ["Purchase", "F9"], ["Memorandum", "Ctrl+F10"], ["Reversing Journal", ""], ["Credit Note", "Ctrl+F8"], ["Debit Note", "Ctrl+F9"]]
     .forEach(([v, k]) => add(v + " Voucher", "New entry (" + k + ")", () => HL.go("voucher", { vtype: v }), "Voucher"));
   const m = HL.S.masters;
   if (m) {
