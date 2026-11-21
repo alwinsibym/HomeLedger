@@ -14,6 +14,6 @@ jobs:
         with:
           python-version: "3.12"
       - name: Core tests
-        run: python -m unittest tests.test_core
+        run: python -m unittest tests.test_core tests.test_winshell
       - name: Program-level tests with timings (starts the real program, kills it, corrupts files...)
         run: python -W ignore -m unittest -v --durations 16 tests.test_integration

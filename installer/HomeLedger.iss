@@ -39,9 +39,9 @@ Source: "..\homeledger.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\README.txt"; DestDir: "{app}"; Flags: ignoreversion isreadme
 
 [Icons]
-Name: "{autoprograms}\HomeLedger"; Filename: "{app}\HomeLedger.exe"; IconFilename: "{app}\homeledger.ico"; Comment: "Household and farm accounts"
+Name: "{autoprograms}\HomeLedger"; Filename: "{app}\HomeLedger.exe"; IconFilename: "{app}\homeledger.ico"; AppUserModelID: "HomeLedger.App"; Comment: "Household and farm accounts"
 Name: "{autoprograms}\Uninstall HomeLedger"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\HomeLedger"; Filename: "{app}\HomeLedger.exe"; IconFilename: "{app}\homeledger.ico"; Tasks: desktopicon
+Name: "{autodesktop}\HomeLedger"; Filename: "{app}\HomeLedger.exe"; IconFilename: "{app}\homeledger.ico"; AppUserModelID: "HomeLedger.App"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\HomeLedger.exe"; Description: "Start HomeLedger now"; Flags: nowait postinstall skipifsilent

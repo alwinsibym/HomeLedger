@@ -84,6 +84,11 @@ def open_window(url: str) -> None:
                 "--no-default-browser-check", "--disable-features=Translate", "--window-size=1366,820"]
         try:
             subprocess.Popen(args, close_fds=True)
+            try:
+                from . import winshell
+                winshell.brand_window_async()
+            except Exception:
+                pass
             return
         except Exception:
             logging.exception("could not start app window")
