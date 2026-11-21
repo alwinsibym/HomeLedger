@@ -43,6 +43,7 @@
     if (e.ctrlKey && (e.key === "F8" || e.key === "F9") && HL.cur && HL.cur.name !== "voucher") { e.preventDefault(); HL.go("voucher", { vtype: e.key === "F8" ? "Credit Note" : "Debit Note" }); return; }
     if (e.key === "F10" && HL.cur && HL.cur.name !== "voucher") { e.preventDefault(); HL.go("menu", { id: "transactions" }); return; }
     if (e.ctrlKey && e.key === "F10" && HL.cur && HL.cur.name !== "voucher") { e.preventDefault(); HL.go("voucher", { vtype: "Memorandum" }); return; }
+    if (e.key === "F12") { e.preventDefault(); HL.configure(); return; }
     if (e.key === "F3") { e.preventDefault(); HL.go("company"); return; }
     if (e.altKey && e.key === "F1") { e.preventDefault(); HL.go("dashboard"); return; }
     if (HL.cur && HL.cur.name === "gateway" && HL.onKey) { /* handled above */ }
@@ -52,7 +53,7 @@
     else if (e.key === "Escape") { e.target.blur(); e.stopPropagation(); }
   });
   // swallow F-key browser defaults (F5 reloads the page, F3 opens find, etc.)
-  window.addEventListener("keydown", e => { if (/^F(3|4|5|6|7|8|9|10)$/.test(e.key) && !e.ctrlKey) e.preventDefault(); }, true);
+  window.addEventListener("keydown", e => { if (/^F(3|4|5|6|7|8|9|10|12)$/.test(e.key) && !e.ctrlKey) e.preventDefault(); }, true);
   document.addEventListener("contextmenu", e => { if (!/^(INPUT|TEXTAREA)$/.test(e.target.tagName)) e.preventDefault(); });
   window.addEventListener("error", e => say("A screen problem occurred. Your data is safe. Press Esc and try again.", "err"));
   window.addEventListener("unhandledrejection", e => { if (e.reason && e.reason.message) say(e.reason.message, "err"); });

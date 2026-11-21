@@ -1,3 +1,9 @@
+HL.cfg = {
+  get() { try { return Object.assign({ entry: "auto", drcr: "" }, JSON.parse(localStorage.getItem("hl-cfg") || "{}")); } catch (e) { return { entry: "auto", drcr: "" }; } },
+  set(o) { try { localStorage.setItem("hl-cfg", JSON.stringify(Object.assign(HL.cfg.get(), o))); } catch (e) { } },
+  byTo() { const c = HL.cfg.get(); return (c.drcr || (document.documentElement.dataset.look === "classic" ? "byto" : "drcr")) === "byto"; },
+  side(x) { return HL.cfg.byTo() ? (x === "Dr" ? "By" : "To") : x; },
+};
 /* Screens, part 1: Gateway, Dashboard, Voucher entry, Day Book */
 "use strict";
 
@@ -24,6 +30,7 @@ HL.menus = (() => {
       ["i", "G", "Groups", "", menu("m_groups")],
       ["i", "L", "Ledgers", "", menu("m_ledgers")],
       ["i", "C", "Cost Centres", "", menu("m_cc")],
+      ["i", "V", "Voucher Classes", "Ready-made voucher layouts", go("classes")],
       ["i", "T", "Stock Items", "Things bought and sold by quantity", go("stockitems")],
       ["i", "O", "Opening Balances", "Start-up cash, bank, loans", go("openings")],
       ["i", "I", "Company Info", "Name and books beginning date (F3)", go("company")]] },
@@ -55,6 +62,8 @@ HL.menus = (() => {
       ["i", "P", "Profit & Loss A/c", "Income less spending", go("pnl")],
       ["i", "T", "Trial Balance", "All ledgers", go("tb")],
       ["i", "S", "Stock Summary", "Quantity and value of stock", go("stocksummary")],
+      ["i", "Z", "Post-dated Vouchers", "Future-dated cheques waiting to be activated", go("postdated")],
+      ["i", "Q", "Cheque Register", "All cheques, with cheque printing", go("chequereg")],
       ["i", "K", "Bank Reconciliation", "Match entries with the bank statement", go("bankrec")],
       ["i", "F", "Cash Flow", "Money in and out by account type", go("cashflow")],
       ["i", "O", "Outstandings: Receivable", "Who owes you, with ageing", go("receivables")],
@@ -248,7 +257,7 @@ HL.screens.voucher = {
     const allOpts = () => ledgerOptions();
     const simple = ["Payment", "Receipt", "Contra"].includes(vtype);
     // detect whether an existing voucher fits the simple layout
-    let mode = simple ? "simple" : "generic";
+    let mode = simple && !(HL.cfg.get().entry === "double" && vtype !== "Contra") ? "simple" : "generic";
     if (v && simple) {
       const cbLines = v.lines.filter(l => l.cb_kind);
       const wantSide = vtype === "Payment" ? "Cr" : vtype === "Receipt" ? "Dr" : "Cr";
@@ -297,7 +306,7 @@ HL.screens.voucher = {
     const tbl = h("table", { class: "vtbl" });
     const showItems = vtype !== "Contra";
     const heads = [];
-    if (mode === "generic") heads.push(h("th", { class: "sidecol" }, "Dr/Cr"));
+    if (mode === "generic") heads.push(h("th", { class: "sidecol" }, HL.cfg.byTo() ? "By/To" : "Dr/Cr"));
     heads.push(h("th", {}, vtype === "Contra" ? "Put into (Cash / Bank)" : mode === "simple" ? (vtype === "Payment" ? "Particulars (spent on / paid to)" : "Particulars (received from / for)") : "Account"));
     heads.push(h("th", { style: "width:11rem" }, "Cost Centre"));
     if (showItems) heads.push(h("th", { style: "width:10rem" }, "Item (optional)"), h("th", { class: "qtycol" }, "Qty"), h("th", { class: "unitcol" }, "Unit"));
@@ -320,7 +329,7 @@ HL.screens.voucher = {
       const tr = h("tr", {});
       if (mode === "generic") {
         const dflSide = pre ? pre.side : (rows.length === 0 ? (vtype === "Purchase" ? "Dr" : "Dr") : (rows.length === 1 && rows[0].side.value === "Dr" ? "Cr" : "Dr"));
-        r.side = h("select", { "aria-label": "Debit or credit" }, h("option", { value: "Dr" }, "Dr"), h("option", { value: "Cr" }, "Cr"));
+        r.side = h("select", { "aria-label": "Debit or credit" }, h("option", { value: "Dr" }, HL.cfg.side("Dr")), h("option", { value: "Cr" }, HL.cfg.side("Cr")));
         r.side.value = dflSide; r.side.addEventListener("change", () => { recalc(); S.dirty = true; });
         tr.append(h("td", { class: "sidecol" }, r.side));
       }
@@ -371,7 +380,35 @@ HL.screens.voucher = {
     const narr = h("textarea", { rows: "2", style: "width:100%", maxlength: "500", placeholder: "Narration: a short note about this entry", "aria-label": "Narration" }, S.narration);
     narr.addEventListener("input", () => { S.dirty = true; });
     narr.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); save(); } });
-    body.append(tbl, addBtn, totalBox, h("label", { class: "f", style: "margin-top:.6rem" }, "Narration", narr),
+    // cheque details, post-dated flag, voucher class
+    const M0 = v ? v.meta : { post_dated: false, inst_no: "", inst_date: null, bank_name: "", class_name: "" };
+    const bankish = ["Payment", "Receipt", "Contra"].includes(vtype);
+    const mNo = h("input", { type: "text", value: M0.inst_no, maxlength: "30", style: "width:9rem", "aria-label": "Cheque number" });
+    const mDt = h("input", { type: "text", value: M0.inst_date ? showDate(M0.inst_date) : "", style: "width:9rem", placeholder: "dd-mm-yyyy", "aria-label": "Cheque date" });
+    const mBk = h("input", { type: "text", value: M0.bank_name, maxlength: "60", style: "width:12rem", "aria-label": "Bank name" });
+    const mPd = h("input", { type: "checkbox", checked: M0.post_dated, id: "pdated" });
+    [mNo, mDt, mBk, mPd].forEach(x => x.addEventListener("input", () => { S.dirty = true; }));
+    const classes = (await HL.get("/api/classes")).filter(c => c.vtype === vtype);
+    const clsSel = h("select", { "aria-label": "Voucher class" }, h("option", { value: "" }, "(none)"), classes.map(c => h("option", { value: c.name }, c.name)));
+    clsSel.value = M0.class_name || "";
+    clsSel.addEventListener("change", () => {
+      S.dirty = true;
+      const c = classes.find(x => x.name === clsSel.value);
+      if (!c || !isNew || rows.some(r => r.amt.value || r.led.value)) return;
+      while (rows.length) { rows[0].tr.remove(); rows.shift(); }
+      c.lines.forEach(l => {
+        const led = M().ledgers.find(x => x.id === l.ledger_id);
+        if (mode === "simple" && led && led.cb_kind) { acct.set && acct.set(l.ledger_id); updBal(); return; }
+        const r = addRow({ ledger_id: l.ledger_id, side: l.side, amount_paise: 0 }); if (mode === "simple") r.amt.value = "";
+      });
+      if (!rows.length) addRow();
+      recalc();
+    });
+    const metaRow = h("div", { class: "row", style: "gap:1rem;flex-wrap:wrap;margin-top:.8rem;align-items:flex-end" },
+      classes.length ? h("label", { class: "f" }, "Voucher class", clsSel) : null,
+      bankish ? [h("label", { class: "f" }, "Cheque no.", mNo), h("label", { class: "f" }, "Cheque date", mDt), h("label", { class: "f" }, "Bank", mBk),
+        h("label", { class: "f", style: "flex-direction:row;align-items:center;gap:.4rem", title: "The cheque is dated in the future. It stays out of the books until you activate it (Reports > Post-dated Vouchers)" }, mPd, "Post-dated")] : null);
+    body.append(tbl, addBtn, totalBox, metaRow, h("label", { class: "f", style: "margin-top:.6rem" }, "Narration", narr),
       h("p", { class: "hint" }, "Tip: Enter moves to the next box. After the last amount, Enter adds another line; Enter on the Narration saves (or press Ctrl+A)."));
     if (!isNew) {
       body.append(h("p", { class: "hint" }, "Entered " + v.created_at.slice(0, 16) + (v.updated_at !== v.created_at ? " · last changed " + v.updated_at.slice(0, 16) : "") + (v.status === "cancelled" ? " · CANCELLED" : "")));
@@ -403,7 +440,8 @@ HL.screens.voucher = {
           const t = lines.reduce((s, l) => s + Math.round(parseFloat(l.amount) * 100), 0);
           lines.push({ ledger_id: acct.value, side: vtype === "Receipt" ? "Dr" : "Cr", amount: (t / 100).toFixed(2) });
         }
-        const res = await HL.post("/api/voucher/save", { id: isNew ? undefined : v.id, vtype, date: S.date, narration: narr.value, status: S.status, ref: refInp.value, date_approx: approx.checked, lines });
+        const res = await HL.post("/api/voucher/save", { id: isNew ? undefined : v.id, vtype, date: S.date, narration: narr.value, status: S.status, ref: refInp.value, date_approx: approx.checked, lines,
+          meta: { inst_no: mNo.value, inst_date: mDt.value.trim() ? (parseDateInput(mDt.value, S.date) || (() => { throw new Error("Please type the cheque date like 15-11-2026."); })()) : null, bank_name: mBk.value, post_dated: mPd.checked, class_name: clsSel.value } });
         S.dirty = false; HL.S.lastVoucherDate = S.date; if (acct && acct.value) HL.S.lastAcct = acct.value;
         say(`${vtype} no. ${res.number} saved (${rs(res.total_paise)}).`, "ok");
         await loadMasters();

@@ -9,7 +9,7 @@ from pathlib import Path
 
 from .errors import CorruptDatabase, UserError
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 SCHEMA_V4 = """
 CREATE TABLE IF NOT EXISTS bank_clearing (
@@ -28,6 +28,29 @@ CREATE TABLE IF NOT EXISTS stock_items (
     opening_value_paise INTEGER NOT NULL DEFAULT 0 CHECK (opening_value_paise >= 0),
     created_at TEXT
 )"""
+
+SCHEMA_V6 = (
+    """CREATE TABLE IF NOT EXISTS voucher_meta (
+        voucher_id INTEGER PRIMARY KEY REFERENCES vouchers(id) ON DELETE CASCADE,
+        post_dated INTEGER NOT NULL DEFAULT 0,
+        inst_no TEXT NOT NULL DEFAULT '',
+        inst_date TEXT,
+        bank_name TEXT NOT NULL DEFAULT '',
+        class_name TEXT NOT NULL DEFAULT ''
+    )""",
+    """CREATE TABLE IF NOT EXISTS voucher_classes (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        vtype TEXT NOT NULL,
+        lines_json TEXT NOT NULL DEFAULT '[]'
+    )""",
+)
+
+
+def apply_v6(conn):
+    for stmt in SCHEMA_V6:
+        conn.execute(stmt)
+
 
 SCHEMA_V2 = """
 CREATE TABLE IF NOT EXISTS users (
@@ -362,6 +385,7 @@ def _create_fresh(path, today=None) -> None:
             conn.execute(SCHEMA_V2)
             conn.execute(SCHEMA_V4)
             conn.execute(SCHEMA_V5)
+            apply_v6(conn)
             _seed(conn, today or dt.date.today())
             conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     finally:
@@ -478,6 +502,8 @@ def init_database(path, log=None) -> None:
                     conn.execute(SCHEMA_V4)
                 if ver < 5:
                     conn.execute(SCHEMA_V5)
+                if ver < 6:
+                    apply_v6(conn)
                 bad = conn.execute("PRAGMA foreign_key_check").fetchall()
                 if bad:
                     raise sqlite3.IntegrityError("upgrade check failed")

@@ -277,6 +277,27 @@ class TestVouchers(Base):
         with self.assertRaises(UserError):
             sv.delete_stock_item(self.c, sid)
 
+    def test_postdated_cheque_and_classes(self):
+        bank = self.L["Bank Account"]
+        lines = [{"ledger_id": self.L["Water Bill"], "side": "Dr", "amount": "250"}, {"ledger_id": bank, "side": "Cr", "amount": "250"}]
+        v = sv.save_voucher(self.c, {"vtype": "Payment", "date": "2026-12-20", "lines": lines,
+                                     "meta": {"post_dated": True, "inst_no": "004512", "inst_date": "2026-12-20", "bank_name": "SBI"}})
+        self.assertEqual(v["status"], "optional")
+        self.assertEqual(v["meta"]["inst_no"], "004512")
+        self.assertEqual(rp.trial_balance(self.c, "2026-04-01", "2027-03-31")["total_dr"], 0)
+        self.assertEqual(len(sv.list_postdated(self.c)), 1)
+        self.assertEqual(sv.cheque_register(self.c, "2026-04-01", "2027-03-31")[0]["inst_no"], "004512")
+        sv.activate_postdated(self.c, v["id"])
+        self.assertEqual(rp.trial_balance(self.c, "2026-04-01", "2027-03-31")["total_dr"], 25000)
+        self.assertEqual(sv.list_postdated(self.c), [])
+        cid = sv.save_class(self.c, {"name": "Cash Sales", "vtype": "Receipt", "lines": [{"ledger_id": self.L["Cash"], "side": "Dr"}]})["id"]
+        self.assertEqual(sv.list_classes(self.c)[0]["lines"][0]["side"], "Dr")
+        with self.assertRaises(UserError):
+            sv.save_class(self.c, {"name": "cash sales", "vtype": "Receipt"})
+        sv.delete_class(self.c, cid)
+        sv.delete_voucher(self.c, v["id"])
+        self.assertEqual(self.c.execute("select count(*) from voucher_meta").fetchone()[0], 0)
+
     def test_database_refuses_bad_rows_directly(self):
         v = self.pay("2026-11-10", "Water Bill", 100)
         with self.assertRaises(sqlite3.IntegrityError):   # both sides on one line

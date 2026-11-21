@@ -388,7 +388,29 @@ def get_voucher(conn, vid: int) -> dict:
     return {"id": v["id"], "vtype": v["vtype"], "fy": v["fy"], "number": v["number"], "date": v["vdate"],
             "narration": v["narration"], "ref": v["ref"], "date_approx": bool(v["date_approx"]),
             "status": v["status"], "created_at": v["created_at"], "updated_at": v["updated_at"],
-            "lines": lines, "total_paise": total}
+            "lines": lines, "total_paise": total, "meta": get_meta(conn, vid)}
+
+
+def get_meta(conn, vid: int) -> dict:
+    r = conn.execute("SELECT post_dated, inst_no, inst_date, bank_name, class_name FROM voucher_meta WHERE voucher_id=?", (vid,)).fetchone()
+    if not r:
+        return {"post_dated": False, "inst_no": "", "inst_date": None, "bank_name": "", "class_name": ""}
+    return {"post_dated": bool(r["post_dated"]), "inst_no": r["inst_no"], "inst_date": r["inst_date"],
+            "bank_name": r["bank_name"], "class_name": r["class_name"]}
+
+
+def _save_meta(conn, vid: int, m: dict, vdate: str) -> None:
+    m = m or {}
+    inst_no = _txt(m.get("inst_no"), 30, "Cheque / instrument number")
+    inst_date = parse_iso(m["inst_date"], "Cheque date") if m.get("inst_date") else None
+    bank = _txt(m.get("bank_name"), 60, "Bank name")
+    cls = _txt(m.get("class_name"), 40, "Voucher class")
+    pd = 1 if m.get("post_dated") else 0
+    if not (pd or inst_no or inst_date or bank or cls):
+        conn.execute("DELETE FROM voucher_meta WHERE voucher_id=?", (vid,))
+        return
+    conn.execute("INSERT OR REPLACE INTO voucher_meta(voucher_id, post_dated, inst_no, inst_date, bank_name, class_name) VALUES (?,?,?,?,?,?)",
+                 (vid, pd, inst_no, inst_date, bank, cls))
 
 
 def _write_lines(conn, vid, lines):
@@ -416,6 +438,9 @@ def save_voucher(conn, p: dict) -> dict:
         if existing and existing["vtype"] != p.get("vtype"):
             raise UserError("The voucher type of an existing voucher cannot be changed.")
         d = _prepare(conn, p, existing)
+        if (p.get("meta") or {}).get("post_dated"):
+            if d["status"] == "posted":
+                d["status"] = "optional"          # a post-dated voucher stays out of the books until it is activated
         now = dbm.now_iso()
         if existing:
             number = existing["number"]
@@ -437,6 +462,8 @@ def save_voucher(conn, p: dict) -> dict:
             action = "create"
         _write_lines(conn, vid, d["lines"])
         _verify_balanced(conn, vid)
+        if "meta" in p:
+            _save_meta(conn, vid, p.get("meta"), d["vdate"])
         after = get_voucher(conn, vid)
         dbm.audit(conn, action, "voucher", vid, json.dumps({"before": existing, "after": after}, default=str))
     return after
@@ -605,3 +632,81 @@ def delete_stock_item(conn, sid: int) -> None:
             raise UserError("This item is used in vouchers, so it cannot be deleted.")
         conn.execute("DELETE FROM stock_items WHERE id=?", (sid,))
         dbm.audit(conn, "delete", "stock_item", sid, r["name"])
+
+
+# =============================================================================
+# Post-dated vouchers, cheque register, voucher classes
+# =============================================================================
+def activate_postdated(conn, vid: int) -> dict:
+    """Bring a post-dated voucher into the books (its date has arrived and the cheque is being honoured)."""
+    with dbm.write_tx(conn):
+        v = get_voucher(conn, vid)
+        if not v["meta"]["post_dated"]:
+            raise UserError("This is not a post-dated voucher.")
+        conn.execute("UPDATE vouchers SET status='posted', updated_at=? WHERE id=?", (dbm.now_iso(), vid))
+        conn.execute("UPDATE voucher_meta SET post_dated=0 WHERE voucher_id=?", (vid,))
+        dbm.audit(conn, "activate", "voucher", vid, "post-dated voucher activated")
+    return {"ok": True}
+
+
+def list_postdated(conn) -> list:
+    return [dict(r) for r in conn.execute(
+        """SELECT v.id, v.vtype, v.number, v.vdate, v.narration, m.inst_no, m.inst_date, m.bank_name,
+                  (SELECT COALESCE(SUM(debit_paise),0) FROM entries WHERE voucher_id=v.id) AS amount_paise
+           FROM vouchers v JOIN voucher_meta m ON m.voucher_id=v.id
+           WHERE m.post_dated=1 AND v.status<>'cancelled' ORDER BY v.vdate, v.id""")]
+
+
+def cheque_register(conn, frm: str, to: str) -> list:
+    frm, to = parse_iso(frm), parse_iso(to)
+    out = []
+    for r in conn.execute(
+            """SELECT v.id, v.vtype, v.number, v.vdate, v.status, v.narration, m.inst_no, m.inst_date, m.bank_name, m.post_dated,
+                      (SELECT COALESCE(SUM(debit_paise),0) FROM entries WHERE voucher_id=v.id) AS amount_paise,
+                      (SELECT group_concat(l.name, ', ') FROM entries e JOIN ledgers l ON l.id=e.ledger_id
+                        WHERE e.voucher_id=v.id AND l.cb_kind IS NULL) AS party,
+                      (SELECT group_concat(l.name, ', ') FROM entries e JOIN ledgers l ON l.id=e.ledger_id
+                        WHERE e.voucher_id=v.id AND l.cb_kind='bank') AS bank_ledger
+               FROM vouchers v JOIN voucher_meta m ON m.voucher_id=v.id
+               WHERE m.inst_no<>'' AND v.vdate BETWEEN ? AND ? AND v.status<>'cancelled' ORDER BY v.vdate, v.id""", (frm, to)):
+        out.append(dict(r))
+    return out
+
+
+def save_class(conn, d: dict) -> dict:
+    name = _txt(d.get("name"), 40, "Class name")
+    if not name:
+        raise UserError("Please enter a class name.")
+    vt = d.get("vtype")
+    if vt not in VTYPES:
+        raise UserError("Choose a voucher type.")
+    lines = []
+    for l in d.get("lines") or []:
+        lid = int(l.get("ledger_id") or 0)
+        if not conn.execute("SELECT 1 FROM ledgers WHERE id=?", (lid,)).fetchone():
+            raise UserError("A ledger in this class no longer exists.")
+        lines.append({"ledger_id": lid, "side": "Cr" if l.get("side") == "Cr" else "Dr"})
+    with dbm.write_tx(conn):
+        cid = d.get("id")
+        dup = conn.execute("SELECT id FROM voucher_classes WHERE name=? COLLATE NOCASE", (name,)).fetchone()
+        if dup and dup["id"] != cid:
+            raise UserError(f"A class named '{name}' already exists.")
+        if cid:
+            conn.execute("UPDATE voucher_classes SET name=?, vtype=?, lines_json=? WHERE id=?", (name, vt, json.dumps(lines), cid))
+        else:
+            cid = conn.execute("INSERT INTO voucher_classes(name, vtype, lines_json) VALUES (?,?,?)", (name, vt, json.dumps(lines))).lastrowid
+        dbm.audit(conn, "save", "voucher_class", cid, name)
+    return {"id": cid}
+
+
+def list_classes(conn) -> list:
+    out = []
+    for r in conn.execute("SELECT id, name, vtype, lines_json FROM voucher_classes ORDER BY vtype, name COLLATE NOCASE"):
+        out.append({"id": r["id"], "name": r["name"], "vtype": r["vtype"], "lines": json.loads(r["lines_json"])})
+    return out
+
+
+def delete_class(conn, cid: int) -> None:
+    with dbm.write_tx(conn):
+        conn.execute("DELETE FROM voucher_classes WHERE id=?", (cid,))
+        dbm.audit(conn, "delete", "voucher_class", cid, "")

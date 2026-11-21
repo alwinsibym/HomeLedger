@@ -296,6 +296,12 @@ def _writer(fn):
 POST["/api/voucher/save"] = _writer(lambda c, b: sv.save_voucher(c, b))
 POST["/api/voucher/status"] = _writer(lambda c, b: sv.set_voucher_status(
     c, int(b.get("id") or 0), b.get("status") if b.get("status") in ("cancelled", "optional", "memo") else "posted"))
+GET["/api/postdated"] = _reader(lambda c, q: sv.list_postdated(c))
+GET["/api/chequereg"] = _reader(lambda c, q: sv.cheque_register(c, q.get("from"), q.get("to")))
+GET["/api/classes"] = _reader(lambda c, q: sv.list_classes(c))
+POST["/api/voucher/activate"] = _writer(lambda c, b: sv.activate_postdated(c, int(b.get("id") or 0)))
+POST["/api/class/save"] = _writer(lambda c, b: sv.save_class(c, b))
+POST["/api/class/delete"] = _writer(lambda c, b: sv.delete_class(c, int(b.get("id") or 0)) or {"ok": True})
 POST["/api/voucher/delete"] = _writer(lambda c, b: sv.delete_voucher(c, int(b.get("id") or 0)))
 POST["/api/stockitem/save"] = _writer(lambda c, b: sv.save_stock_item(c, b))
 POST["/api/stockitem/delete"] = _writer(lambda c, b: sv.delete_stock_item(c, int(b.get("id") or 0)) or {"ok": True})
