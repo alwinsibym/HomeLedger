@@ -14,8 +14,9 @@ class TestTaskbarIdentity(unittest.TestCase):
         root.title("HomeLedger test window")
         root.update()
         try:
-            hwnd = winshell._find_window()
-            self.assertTrue(hwnd, "window not found by title")
+            import ctypes
+            hwnd = ctypes.windll.user32.GetParent(root.winfo_id())
+            self.assertTrue(hwnd, "no top-level window")
             self.assertTrue(winshell._set_props(hwnd, sys.executable))
             self.assertEqual(winshell._find_windows(), [])   # a Tk window is not a browser window: never mistaken for HomeLedger
         finally:
