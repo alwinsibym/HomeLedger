@@ -126,3 +126,40 @@ HL.configure = () => {
     h("p", { class: "hint" }, "These choices are kept on this computer. They take effect the next time you open a voucher."));
   modal({ title: "Configuration (F12)", body, buttons: [{ label: "Cancel", onclick: m => m.close() }, { label: "Accept", cls: "primary", onclick: m => { HL.cfg.set({ entry: entry.value, drcr: dr.value }); m.close(); say("Saved.", "ok"); } }] });
 };
+
+
+/* Bill-wise references on a party line */
+HL.isParty = id => {
+  const M = HL.S.masters; if (!M) return false;
+  const ledger = M.ledgers.find(l => l.id === id); if (!ledger) return false;
+  const root = code => { const out = new Set(); const st = M.groups.filter(g => g.code === code).map(g => g.id); while (st.length) { const i = st.pop(); out.add(i); M.groups.filter(g => g.parent_id === i).forEach(g => st.push(g.id)); } return out; };
+  return root("DEBTORS").has(ledger.group_id) || root("CREDITORS").has(ledger.group_id);
+};
+
+HL.billsDialog = async (r, voucherId, getSide) => {
+  const id = r.led.value; if (!id) { say("Choose the party first.", "err"); return; }
+  const open = await HL.get("/api/openbills", { ledger_id: id, exclude: voucherId || 0 });
+  const rows = (r.bills.length ? r.bills : [{ ref: "", kind: "new", amount: r.amt.value || "", due: "" }]).map(b => Object.assign({}, b));
+  const tb = h("tbody", {});
+  const dl = h("datalist", { id: "dl-openbills" }, open.map(b => h("option", { value: b.ref }, inr(Math.abs(b.pending)))));
+  const draw = () => {
+    tb.replaceChildren();
+    rows.forEach((b, i) => {
+      const kind = h("select", { "aria-label": "Type" }, [["new", "New Ref"], ["against", "Against Ref"], ["advance", "Advance"]].map(([v, t]) => h("option", { value: v }, t))); kind.value = b.kind;
+      const ref = h("input", { type: "text", list: "dl-openbills", value: b.ref, maxlength: "40", style: "width:9rem", "aria-label": "Reference" });
+      const amt = h("input", { type: "text", inputmode: "decimal", value: b.amount, style: "width:7rem;text-align:right", "aria-label": "Amount" });
+      const due = h("input", { type: "text", value: b.due ? showDate(b.due) : "", placeholder: "dd-mm-yyyy", style: "width:8rem", "aria-label": "Due date" });
+      kind.onchange = () => { b.kind = kind.value; };
+      ref.oninput = () => { b.ref = ref.value; const o = open.find(x => x.ref.toLowerCase() === ref.value.trim().toLowerCase()); if (o && b.kind === "against" && !amt.value) { amt.value = (Math.abs(o.pending) / 100).toFixed(2); b.amount = amt.value; } };
+      amt.oninput = () => { b.amount = amt.value; };
+      due.onchange = () => { b.due = due.value.trim() ? (parseDateInput(due.value, todayIso()) || "") : ""; };
+      tb.append(h("tr", {}, h("td", {}, kind), h("td", {}, ref), h("td", {}, amt), h("td", {}, due), h("td", {}, h("button", { class: "btn", type: "button", onclick: () => { rows.splice(i, 1); if (!rows.length) rows.push({ ref: "", kind: "new", amount: "", due: "" }); draw(); } }, "×"))));
+    });
+  };
+  draw();
+  const body = h("div", {}, h("p", { class: "hint" }, "New Ref: a new bill or invoice. Against Ref: settles an open bill. Advance: money given or taken before a bill exists. Anything not matched to a bill stays 'on account'."), dl,
+    h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, ["Type", "Reference", "Amount (₹)", "Due date", ""].map(x => h("th", {}, x)))), tb),
+    h("button", { class: "btn", type: "button", style: "margin-top:.5rem", onclick: () => { rows.push({ ref: "", kind: open.length ? "against" : "new", amount: "", due: "" }); draw(); } }, "+ Add a bill"));
+  modal({ title: "Bill allocation", body, buttons: [{ label: "Cancel", onclick: m => m.close() }, { label: "Clear", onclick: m => { r.bills = []; r.showBb(); m.close(); } },
+    { label: "Accept", cls: "primary", onclick: m => { r.bills = rows.filter(b => b.ref.trim() || b.amount).map(b => ({ ref: b.ref.trim(), kind: b.kind, amount: b.amount, due: b.due || null })); r.showBb(); m.close(); } }] });
+};

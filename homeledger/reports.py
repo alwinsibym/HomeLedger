@@ -731,6 +731,47 @@ def outstanding(conn, kind: str, as_on: str) -> dict:
             take = min(b[1], credit_pool)
             b[1] -= take
             credit_pool -= take
+        refs = conn.execute("SELECT 1 FROM bill_refs br JOIN vouchers v ON v.id=br.voucher_id AND v.status='posted' "
+                            "WHERE br.ledger_id=? AND v.vdate<=? LIMIT 1", (l["id"], as_on)).fetchone()
+        if refs:
+            # bill-wise: the references typed in vouchers decide what is open; anything not tied to a bill is 'on account'
+            owed = op + sum(e["net"] * sign for e in conn.execute(
+                """SELECT e.debit_paise-e.credit_paise AS net FROM entries e JOIN vouchers v ON v.id=e.voucher_id AND v.status='posted'
+                   WHERE e.ledger_id=? AND v.vdate<=?""", (l["id"], as_on)))
+            open_bills, tracked = [], 0
+            nat = "Dr" if kind == "receivable" else "Cr"
+            billmap = {}
+            for br in conn.execute(
+                    """SELECT br.ref_name, br.side, br.kind, br.amount_paise, br.due_date, v.vdate FROM bill_refs br
+                       JOIN vouchers v ON v.id=br.voucher_id AND v.status='posted' WHERE br.ledger_id=? AND v.vdate<=? ORDER BY v.vdate, br.id""",
+                    (l["id"], as_on)):
+                b = billmap.setdefault(br["ref_name"].lower(), {"ref": br["ref_name"], "date": br["vdate"], "due": br["due_date"], "net": 0})
+                if br["kind"] != "against" and br["side"] == nat:
+                    b["date"] = min(b["date"], br["vdate"])
+                    b["due"] = br["due_date"] or b["due"]
+                b["net"] += br["amount_paise"] if br["side"] == nat else -br["amount_paise"]
+                tracked += br["amount_paise"] if br["side"] == nat else -br["amount_paise"]
+            buckets = [0, 0, 0, 0]
+            detail = []
+            for b in billmap.values():
+                if b["net"] == 0:
+                    continue
+                age = (asd - dt.date.fromisoformat(b["date"])).days
+                if b["net"] > 0:
+                    buckets[0 if age <= 30 else 1 if age <= 60 else 2 if age <= 90 else 3] += b["net"]
+                detail.append({"ref": b["ref"], "date": b["date"], "due": b["due"], "pending": b["net"], "days": age})
+            on_account = owed - tracked
+            if on_account > 0:
+                buckets[0] += on_account
+            advance = max(0, -on_account) + sum(-x["pending"] for x in detail if x["pending"] < 0)
+            due = sum(buckets)
+            if due or advance:
+                for i in range(4):
+                    total[i] += buckets[i]
+                out.append({"ledger_id": l["id"], "name": l["name"], "due": due, "buckets": buckets, "advance": advance,
+                            "oldest": min((x["date"] for x in detail if x["pending"] > 0), default=None), "brought_forward": False,
+                            "bills": sorted(detail, key=lambda x: x["date"]), "on_account": max(on_account, 0), "bill_wise": True})
+            continue
         open_bills = [b for b in bills if b[1] > 0]
         advance = credit_pool    # settled more than owed
         if not open_bills and not advance:
@@ -747,7 +788,7 @@ def outstanding(conn, kind: str, as_on: str) -> dict:
         out.append({"ledger_id": l["id"], "name": l["name"], "due": due, "buckets": buckets, "advance": advance,
                     "oldest": None if oldest in (None, "0001-01-01") else oldest, "brought_forward": oldest == "0001-01-01"})
     return {"kind": kind, "as_on": as_on, "rows": out, "total": sum(total), "buckets": total,
-            "note": "Matched oldest-first. Opening balances count as the oldest amount."}
+            "note": "Parties whose vouchers carry bill references are shown bill by bill; for the others, payments are matched oldest-first."}
 
 
 def cash_flow(conn, frm, to) -> dict:

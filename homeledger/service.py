@@ -328,7 +328,7 @@ def _prepare(conn, p: dict, existing: dict | None):
             dr_total += amt
         else:
             cr_total += amt
-        lines.append({"ledger": led, "side": side, "amount": amt, "cc": cc,
+        lines.append({"ledger": led, "side": side, "amount": amt, "cc": cc, "bills_raw": x.get("bills") or [],
                       "item": _canonical(conn, "item", item) if item else None,
                       "qty": qty, "unit": _canonical(conn, "unit", unit) if unit else None})
     if dr_total != cr_total:
@@ -388,7 +388,69 @@ def get_voucher(conn, vid: int) -> dict:
     return {"id": v["id"], "vtype": v["vtype"], "fy": v["fy"], "number": v["number"], "date": v["vdate"],
             "narration": v["narration"], "ref": v["ref"], "date_approx": bool(v["date_approx"]),
             "status": v["status"], "created_at": v["created_at"], "updated_at": v["updated_at"],
-            "lines": lines, "total_paise": total, "meta": get_meta(conn, vid)}
+            "lines": lines, "total_paise": total, "meta": get_meta(conn, vid), "bills": get_bills(conn, vid)}
+
+
+def get_bills(conn, vid: int) -> list:
+    return [dict(r) for r in conn.execute(
+        "SELECT ledger_id, side, ref_name AS ref, kind, amount_paise, due_date FROM bill_refs WHERE voucher_id=? ORDER BY id", (vid,))]
+
+
+def _party_group_ids(conn, code: str) -> set:
+    groups = conn.execute("SELECT id, parent_id, code FROM acct_groups").fetchall()
+    kids = {}
+    for g in groups:
+        kids.setdefault(g["parent_id"], []).append(g["id"])
+    root = [g["id"] for g in groups if g["code"] == code]
+    out, stack = set(), list(root)
+    while stack:
+        i = stack.pop()
+        out.add(i)
+        stack.extend(kids.get(i, []))
+    return out
+
+
+def _save_bills(conn, vid: int, d: dict) -> None:
+    """Bill-wise references on Sundry Debtor / Creditor lines: New Ref, Against Ref, Advance."""
+    party = _party_group_ids(conn, "DEBTORS") | _party_group_ids(conn, "CREDITORS")
+    for n, l in enumerate(d["lines"], 1):
+        raw = l.get("bills_raw") or []
+        if not raw:
+            continue
+        led = l["ledger"]
+        if led["group_id"] not in party:
+            raise UserError(f"Line {n}: bill references can only be used for Sundry Debtors and Sundry Creditors.")
+        total = 0
+        seen = set()
+        for b in raw:
+            ref = _txt(b.get("ref"), 40, "Bill reference")
+            if not ref:
+                raise UserError(f"Line {n}: every bill allocation needs a reference name or number.")
+            kind = b.get("kind")
+            if kind not in ("new", "against", "advance"):
+                raise UserError(f"Line {n}: choose New Ref, Against Ref or Advance for '{ref}'.")
+            amt = parse_amount(b.get("amount"), f"Bill '{ref}' amount")
+            if not amt:
+                raise UserError(f"Line {n}: please enter an amount for bill '{ref}'.")
+            if (ref.lower(), kind) in seen:
+                raise UserError(f"Line {n}: bill '{ref}' is listed twice.")
+            seen.add((ref.lower(), kind))
+            due = parse_iso(b["due"], "Due date") if b.get("due") else None
+            if kind == "against":
+                # must settle an existing bill of this party: one raised on the opposite side
+                row = conn.execute(
+                    "SELECT 1 FROM bill_refs WHERE ledger_id=? AND ref_name=? COLLATE NOCASE AND side<>? AND voucher_id<>? LIMIT 1",
+                    (led["id"], ref, l["side"], vid)).fetchone()
+                if not row:
+                    raise UserError(f"Line {n}: there is no open bill '{ref}' for {led['name']} to settle. Use New Ref to create it first.")
+            elif conn.execute("SELECT 1 FROM bill_refs WHERE ledger_id=? AND ref_name=? COLLATE NOCASE AND kind IN ('new') AND side=? AND voucher_id<>? LIMIT 1",
+                              (led["id"], ref, l["side"], vid)).fetchone() and kind == "new":
+                raise UserError(f"Line {n}: a bill named '{ref}' already exists for {led['name']}. Use Against Ref to settle it, or a different name.")
+            total += amt
+            conn.execute("INSERT INTO bill_refs(voucher_id, ledger_id, side, ref_name, kind, amount_paise, due_date) VALUES (?,?,?,?,?,?,?)",
+                         (vid, led["id"], l["side"], ref, kind, amt, due))
+        if total > l["amount"]:
+            raise UserError(f"Line {n}: bill amounts ({fmt_inr(total)}) are more than the line amount ({fmt_inr(l['amount'])}).")
 
 
 def get_meta(conn, vid: int) -> dict:
@@ -462,6 +524,8 @@ def save_voucher(conn, p: dict) -> dict:
             action = "create"
         _write_lines(conn, vid, d["lines"])
         _verify_balanced(conn, vid)
+        conn.execute("DELETE FROM bill_refs WHERE voucher_id=?", (vid,))
+        _save_bills(conn, vid, d)
         if "meta" in p:
             _save_meta(conn, vid, p.get("meta"), d["vdate"])
         after = get_voucher(conn, vid)
@@ -710,3 +774,17 @@ def delete_class(conn, cid: int) -> None:
     with dbm.write_tx(conn):
         conn.execute("DELETE FROM voucher_classes WHERE id=?", (cid,))
         dbm.audit(conn, "delete", "voucher_class", cid, "")
+
+
+def open_bills(conn, ledger_id: int, exclude_voucher: int = 0) -> list:
+    """Bills of one party that still have something pending (for the 'Against Ref' picker)."""
+    led = conn.execute("SELECT group_id FROM ledgers WHERE id=?", (ledger_id,)).fetchone()
+    if not led:
+        return []
+    nat = "Dr" if led["group_id"] in _party_group_ids(conn, "DEBTORS") else "Cr"
+    m = {}
+    for br in conn.execute("SELECT ref_name, side, amount_paise, due_date FROM bill_refs br JOIN vouchers v ON v.id=br.voucher_id "
+                           "WHERE br.ledger_id=? AND v.status='posted' AND v.id<>? ORDER BY br.id", (ledger_id, exclude_voucher)):
+        b = m.setdefault(br["ref_name"].lower(), {"ref": br["ref_name"], "due": br["due_date"], "pending": 0})
+        b["pending"] += br["amount_paise"] if br["side"] == nat else -br["amount_paise"]
+    return [b for b in m.values() if b["pending"] != 0]

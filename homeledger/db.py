@@ -9,7 +9,7 @@ from pathlib import Path
 
 from .errors import CorruptDatabase, UserError
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 SCHEMA_V4 = """
 CREATE TABLE IF NOT EXISTS bank_clearing (
@@ -45,6 +45,26 @@ SCHEMA_V6 = (
         lines_json TEXT NOT NULL DEFAULT '[]'
     )""",
 )
+
+
+SCHEMA_V7 = (
+    """CREATE TABLE IF NOT EXISTS bill_refs (
+        id INTEGER PRIMARY KEY,
+        voucher_id INTEGER NOT NULL REFERENCES vouchers(id) ON DELETE CASCADE,
+        ledger_id INTEGER NOT NULL REFERENCES ledgers(id),
+        side TEXT NOT NULL CHECK (side IN ('Dr','Cr')),
+        ref_name TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('new','against','advance')),
+        amount_paise INTEGER NOT NULL CHECK (amount_paise > 0),
+        due_date TEXT
+    )""",
+    "CREATE INDEX IF NOT EXISTS ix_bill_ledger ON bill_refs(ledger_id, ref_name)",
+)
+
+
+def apply_v7(conn):
+    for stmt in SCHEMA_V7:
+        conn.execute(stmt)
 
 
 def apply_v6(conn):
@@ -386,6 +406,7 @@ def _create_fresh(path, today=None) -> None:
             conn.execute(SCHEMA_V4)
             conn.execute(SCHEMA_V5)
             apply_v6(conn)
+            apply_v7(conn)
             _seed(conn, today or dt.date.today())
             conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     finally:
@@ -504,6 +525,8 @@ def init_database(path, log=None) -> None:
                     conn.execute(SCHEMA_V5)
                 if ver < 6:
                     apply_v6(conn)
+                if ver < 7:
+                    apply_v7(conn)
                 bad = conn.execute("PRAGMA foreign_key_check").fetchall()
                 if bad:
                     raise sqlite3.IntegrityError("upgrade check failed")

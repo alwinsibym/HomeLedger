@@ -364,7 +364,12 @@ HL.screens.voucher = {
       r.cc.input.addEventListener("picked", afterCc);
       r.led.input.addEventListener("keydown", e => { if (e.key === "Enter" && !r.led.value && !r.led.input.value.trim() && rows.indexOf(r) > 0) { e.preventDefault(); narr.focus(); } });
       r.x = h("button", { class: "delx stop", type: "button", tabindex: "-1", title: "Remove this line", "aria-label": "Remove line", onclick: () => { if (rows.length > 1) { rows.splice(rows.indexOf(r), 1); tr.remove(); recalc(); S.dirty = true; } } }, "×");
-      tr.append(h("td", { class: "amtcol" }, r.amt), h("td", { class: "xcol" }, r.x));
+      r.bills = pre && v ? v.bills.filter(b => b.ledger_id === pre.ledger_id && b.side === pre.side).map(b => ({ ref: b.ref, kind: b.kind, amount: (b.amount_paise / 100).toFixed(2), due: b.due_date })) : [];
+      r.bb = h("button", { class: "btn stop", type: "button", tabindex: "-1", style: "padding:.1rem .45rem;font-size:.8em", title: "Bill-wise details: New Ref, Against Ref, Advance", onclick: () => HL.billsDialog(r, v ? v.id : 0, () => (mode === "generic" ? r.side.value : (vtype === "Receipt" ? "Cr" : "Dr"))) }, "Bills");
+      const showBb = () => { const id = r.led.value; r.bb.style.display = id && HL.isParty(id) ? "" : "none"; r.bb.textContent = r.bills.length ? "Bills (" + r.bills.length + ")" : "Bills"; };
+      r.showBb = showBb; showBb();
+      r.led.input.addEventListener("picked", showBb);
+      tr.append(h("td", { class: "amtcol" }, r.amt), h("td", { class: "xcol" }, r.bb, r.x));
       r.tr = tr; rows.push(r); tb.append(tr); recalc();
       return r;
     }
@@ -432,7 +437,7 @@ HL.screens.voucher = {
           if (!hasAny && !(r.item && r.item.value.trim())) continue;
           if (!r.led.value) throw new Error("Please choose an account on every line that has an amount.");
           if (!a) throw new Error("Please enter an amount for '" + r.led.input.value + "'.");
-          lines.push({ ledger_id: r.led.value, side: mode === "generic" ? r.side.value : (vtype === "Receipt" ? "Cr" : vtype === "Payment" ? "Dr" : "Dr"), amount: (a / 100).toFixed(2), cc_id: r.cc.value, item: r.item ? r.item.value : "", qty: r.qty ? r.qty.value : "", unit: r.unit ? r.unit.value : "" });
+          lines.push({ ledger_id: r.led.value, side: mode === "generic" ? r.side.value : (vtype === "Receipt" ? "Cr" : vtype === "Payment" ? "Dr" : "Dr"), amount: (a / 100).toFixed(2), bills: r.bills, cc_id: r.cc.value, item: r.item ? r.item.value : "", qty: r.qty ? r.qty.value : "", unit: r.unit ? r.unit.value : "" });
         }
         if (!lines.length) throw new Error("Nothing to save yet: choose an account and enter an amount.");
         if (mode === "simple") {

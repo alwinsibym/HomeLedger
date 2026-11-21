@@ -350,7 +350,7 @@ function outstandingScreen(kind, title) {
       const tb = h("tbody", {}); t.append(tb);
       r.rows.forEach(x => {
         const tr = h("tr", { class: "row", tabindex: "0", onclick: () => HL.go("ledger", { ledger_id: x.ledger_id }) },
-          h("td", {}, x.name + (x.advance ? "  (advance " + rs(x.advance) + ")" : "")), h("td", {}, x.brought_forward ? "Opening" : x.oldest ? showDate(x.oldest) : ""),
+          h("td", {}, x.name + (x.advance ? "  (advance " + rs(x.advance) + ")" : ""), x.bills && x.bills.length ? h("div", { class: "muted", style: "font-size:.85em" }, x.bills.map(bl => bl.ref + " " + inr(Math.abs(bl.pending)) + (bl.due ? " (due " + showDate(bl.due) + ")" : "")).join("  ·  ") + (x.on_account ? "  ·  on account " + inr(x.on_account) : "")) : null), h("td", {}, x.brought_forward ? "Opening" : x.oldest ? showDate(x.oldest) : ""),
           ...x.buckets.map(b => h("td", { class: "r" }, b ? inr(b) : "")), h("td", { class: "r" }, inr(x.due)));
         rowKeys(tr); tb.append(tr);
       });

@@ -256,7 +256,7 @@ GET["/api/stockitems"] = _reader(lambda c, q: sv.list_stock_items(c))
 GET["/api/stocksummary"] = _reader(lambda c, q: rp.stock_summary(c, q.get("from"), q.get("to")))
 GET["/api/bankrec"] = _reader(lambda c, q: rp.bank_reconciliation(c, _int(q, "ledger_id", True), q.get("as_on") or q.get("to")))
 GET["/api/cashflow"] = _reader(lambda c, q: rp.cash_flow(c, q.get("from"), q.get("to")))
-GET["/api/outstanding"] = _reader(lambda c, q: rp.outstanding(c, q.get("kind", "receivable"), q.get("as_on") or q.get("to")))
+GET["/api/outstanding"] = _reader(lambda c, q: rp.outstanding(c, q.get("kind", "receivable"), min(q.get("as_on") or q.get("to") or dt_today(), dt_today())))
 GET["/api/pnl"] = _reader(lambda c, q: rp.profit_and_loss(c, q.get("from"), q.get("to")))
 GET["/api/bs"] = _reader(lambda c, q: rp.balance_sheet(c, q.get("from"), q.get("to")))
 GET["/api/activities"] = _reader(lambda c, q: rp.activity_summary(c, q.get("from"), q.get("to")))
@@ -296,6 +296,12 @@ def _writer(fn):
 POST["/api/voucher/save"] = _writer(lambda c, b: sv.save_voucher(c, b))
 POST["/api/voucher/status"] = _writer(lambda c, b: sv.set_voucher_status(
     c, int(b.get("id") or 0), b.get("status") if b.get("status") in ("cancelled", "optional", "memo") else "posted"))
+def dt_today():
+    import datetime
+    return datetime.date.today().isoformat()
+
+
+GET["/api/openbills"] = _reader(lambda c, q: sv.open_bills(c, _int(q, "ledger_id", True), int(q.get("exclude") or 0)))
 GET["/api/postdated"] = _reader(lambda c, q: sv.list_postdated(c))
 GET["/api/chequereg"] = _reader(lambda c, q: sv.cheque_register(c, q.get("from"), q.get("to")))
 GET["/api/classes"] = _reader(lambda c, q: sv.list_classes(c))

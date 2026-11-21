@@ -298,6 +298,35 @@ class TestVouchers(Base):
         sv.delete_voucher(self.c, v["id"])
         self.assertEqual(self.c.execute("select count(*) from voucher_meta").fetchone()[0], 0)
 
+    def test_bill_wise(self):
+        gid = self.c.execute("select id from acct_groups where code='DEBTORS'").fetchone()[0]
+        d = sv.save_ledger(self.c, {"name": "Mohan Traders", "group_id": gid}); did = d["id"] if isinstance(d, dict) else d
+        inc = self.L["Water Bill"]
+        sv.save_voucher(self.c, {"vtype": "Sales", "date": "2026-09-01", "lines": [
+            {"ledger_id": did, "side": "Dr", "amount": "1000", "bills": [{"ref": "INV-1", "kind": "new", "amount": "600"}, {"ref": "INV-2", "kind": "new", "amount": "400"}]},
+            {"ledger_id": inc, "side": "Cr", "amount": "1000"}]})
+        # settle INV-2 first, not the oldest
+        sv.save_voucher(self.c, {"vtype": "Receipt", "date": "2026-11-01", "lines": [
+            {"ledger_id": did, "side": "Cr", "amount": "400", "bills": [{"ref": "inv-2", "kind": "against", "amount": "400"}]},
+            {"ledger_id": self.L["Cash"], "side": "Dr", "amount": "400"}]})
+        row = rp.outstanding(self.c, "receivable", "2026-11-20")["rows"][0]
+        self.assertTrue(row["bill_wise"])
+        self.assertEqual([(b["ref"], b["pending"]) for b in row["bills"]], [("INV-1", 60000)])
+        self.assertEqual(row["due"], 60000)
+        self.assertEqual([b["ref"] for b in sv.open_bills(self.c, did)], ["INV-1"])
+        with self.assertRaises(UserError):       # settling a bill that does not exist
+            sv.save_voucher(self.c, {"vtype": "Receipt", "date": "2026-11-02", "lines": [
+                {"ledger_id": did, "side": "Cr", "amount": "10", "bills": [{"ref": "NOPE", "kind": "against", "amount": "10"}]},
+                {"ledger_id": self.L["Cash"], "side": "Dr", "amount": "10"}]})
+        with self.assertRaises(UserError):       # more than the line
+            sv.save_voucher(self.c, {"vtype": "Receipt", "date": "2026-11-02", "lines": [
+                {"ledger_id": did, "side": "Cr", "amount": "10", "bills": [{"ref": "INV-1", "kind": "against", "amount": "99"}]},
+                {"ledger_id": self.L["Cash"], "side": "Dr", "amount": "10"}]})
+        with self.assertRaises(UserError):       # bills only for debtors and creditors
+            sv.save_voucher(self.c, {"vtype": "Payment", "date": "2026-11-02", "lines": [
+                {"ledger_id": inc, "side": "Dr", "amount": "10", "bills": [{"ref": "X", "kind": "new", "amount": "10"}]},
+                {"ledger_id": self.L["Cash"], "side": "Cr", "amount": "10"}]})
+
     def test_database_refuses_bad_rows_directly(self):
         v = self.pay("2026-11-10", "Water Bill", 100)
         with self.assertRaises(sqlite3.IntegrityError):   # both sides on one line
