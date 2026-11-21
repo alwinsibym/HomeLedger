@@ -9,6 +9,7 @@ HL.gotoItems = function () {
   add("Ledger", "Statement of any account", () => HL.go("ledgers_pick"));
   add("Cash / Bank Book", "Money in hand and in bank", () => HL.go("cashbook"));
   add("Trial Balance", "", () => HL.go("tb"));
+  add("Ratio Analysis", "", () => HL.go("ratios"));
   add("Profit & Loss", "Income less spending", () => HL.go("pnl"));
   add("Balance Sheet", "What you own and owe", () => HL.go("bs"));
   add("Cost Centres", "Income and spending by cost centre", () => HL.go("activities"));

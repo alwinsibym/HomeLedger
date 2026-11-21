@@ -321,3 +321,19 @@ HL.screens.search = {
     if (params.q || params.item || params.ledger_id || params.cc_id || params.from) run(); else q.focus();
   },
 };
+
+
+HL.screens.ratios = {
+  title: "Ratio Analysis",
+  async render(sc) {
+    await loadMasters();
+    const P = getPeriod();
+    const r = await HL.get("/api/ratios", { from: P.from, to: P.to });
+    const fmt = it => it.value === null ? "n/a" : it.kind === "money" ? rs(it.value) : it.kind === "pct" ? (it.value / 100).toFixed(2) + " %" : (it.value / 100).toFixed(2) + " : 1";
+    const t = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, h("th", {}, "Particulars"), h("th", { class: "r" }, "Value"))));
+    const tb = h("tbody", {}); t.append(tb);
+    r.items.forEach(it => tb.append(h("tr", {}, h("td", {}, it.name), h("td", { class: "r" }, fmt(it)))));
+    sc.replaceChildren(h("div", {}, h("h1", { class: "title" }, "Ratio Analysis"), h("p", { class: "sub" }, periodText()), periodBar(() => HL.refresh()), t, h("p", { class: "hint" }, r.note)));
+    HL.setKeys([BACK]);
+  },
+};

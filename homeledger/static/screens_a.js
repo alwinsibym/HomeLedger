@@ -52,7 +52,8 @@ HL.menus = (() => {
     reports: { title: "Reports", items: [
       ["i", "B", "Balance Sheet", "What you own and owe", go("bs")],
       ["i", "P", "Profit & Loss A/c", "Income less spending", go("pnl")],
-      ["i", "T", "Trial Balance", "All ledgers", go("tb")]] },
+      ["i", "T", "Trial Balance", "All ledgers", go("tb")],
+      ["i", "A", "Ratio Analysis", "Working capital, current ratio, profit %", go("ratios")]] },
     display: { title: "Display", sub: "More Reports", items: [
       ["h", "Account Books"],
       ["i", "L", "Ledger", "Statement of any account", go("ledgers_pick")],

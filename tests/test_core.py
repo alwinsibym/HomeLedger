@@ -216,6 +216,13 @@ class TestVouchers(Base):
         with self.assertRaises(UserError):   # cash not allowed in a reversing journal
             sv.save_voucher(self.c, {"vtype": "Reversing Journal", "date": "2026-11-10", "lines": lines})
 
+    def test_ratio_analysis(self):
+        r = rp.ratio_analysis(self.c, "2026-04-01", "2027-03-31")
+        self.assertEqual({i["name"] for i in r["items"]} >= {"Current Ratio", "Working Capital"}, True)
+        self.pay("2026-11-10", "Water Bill", 100)
+        r2 = {i["name"]: i["value"] for i in rp.ratio_analysis(self.c, "2026-04-01", "2027-03-31")["items"]}
+        self.assertEqual(r2["Cash-in-Hand + Bank"], r2["Working Capital"])
+
     def test_database_refuses_bad_rows_directly(self):
         v = self.pay("2026-11-10", "Water Bill", 100)
         with self.assertRaises(sqlite3.IntegrityError):   # both sides on one line

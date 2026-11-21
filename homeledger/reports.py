@@ -633,3 +633,54 @@ def dashboard(conn, frm, to, today: str) -> dict:
     return {"from": frm, "to": to, "cards": cards, "months": [mm[m] for m in months], "top_expenses": top_exp,
             "top_income": top_inc, "by_activity": by_activity, "top_items": top_items, "recent": recent,
             "voucher_count": counts[0], "first_date": counts[1], "last_date": counts[2]}
+
+
+def ratio_analysis(conn, frm, to) -> dict:
+    """Tally-style Ratio Analysis, worked from the same figures as the Balance Sheet and Profit & Loss."""
+    frm, to = _period(frm, to)
+    rows = ledger_rows(conn, frm, to)
+    groups = _groups(conn)
+    kids = {}
+    for g in groups:
+        kids.setdefault(g["parent_id"], []).append(g["id"])
+    code_id = {g["code"]: g["id"] for g in groups}
+
+    def subtree(code):
+        out, stack = set(), [code_id[code]]
+        while stack:
+            i = stack.pop()
+            out.add(i)
+            stack.extend(kids.get(i, []))
+        return out
+
+    def bal(code):   # closing balance, Dr positive
+        ids = subtree(code)
+        return sum(r["closing"] for r in rows if r["group_id"] in ids)
+
+    ca, cl = bal("CURRENT_ASSETS"), -bal("CURRENT_LIAB")
+    stock = bal("STOCK")
+    cash_bank = bal("CASH") + bal("BANK")
+    loans = -(bal("LOANS_LIAB"))
+    capital = -bal("CAPITAL")
+    sales = -bal("SALES")
+    direct_inc = -bal("DIRECT_INC")
+    purchase = bal("PURCHASE")
+    direct_exp = bal("DIRECT_EXP")
+    pl = profit_and_loss(conn, frm, to)
+    net = pl["net"]
+    gross = sales + direct_inc - purchase - direct_exp   # opening/closing stock is not tracked in value
+
+    def pct(a, b):
+        return None if not b else round(a * 10000 / b)       # hundredths of a percent
+    def ratio(a, b):
+        return None if not b else round(a * 100 / b)         # hundredths
+    return {"from": frm, "to": to, "items": [
+        {"name": "Working Capital", "kind": "money", "value": ca - cl},
+        {"name": "Cash-in-Hand + Bank", "kind": "money", "value": cash_bank},
+        {"name": "Current Ratio", "kind": "ratio", "value": ratio(ca, cl)},
+        {"name": "Quick Ratio", "kind": "ratio", "value": ratio(ca - stock, cl)},
+        {"name": "Debt / Equity", "kind": "ratio", "value": ratio(loans, capital + net)},
+        {"name": "Gross Profit %", "kind": "pct", "value": pct(gross, sales + direct_inc)},
+        {"name": "Net Profit %", "kind": "pct", "value": pct(net, pl["total_income"])},
+        {"name": "Expense % of Income", "kind": "pct", "value": pct(pl["total_expense"], pl["total_income"])},
+    ], "note": "Stock is not valued in the books, so Gross Profit % ignores opening and closing stock."}
