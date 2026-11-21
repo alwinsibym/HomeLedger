@@ -3,6 +3,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from homeledger import db as dbm, service as sv, reports as rp, backup as bk, money
 from homeledger.errors import UserError, CorruptDatabase
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import fixtures
 
 
 class Base(unittest.TestCase):
@@ -11,6 +13,7 @@ class Base(unittest.TestCase):
         self.path = Path(self.tmp.name) / "t.db"
         dbm._create_fresh(self.path, dt.date(2026, 11, 19))
         self.c = dbm.connect(self.path)
+        fixtures.install(self.c)
         self.L = {l["name"]: l["id"] for l in sv.list_masters(self.c, "2026-11-19")["ledgers"]}
 
     def tearDown(self):
@@ -42,6 +45,65 @@ class TestYearEnd(Base):
         self.assertEqual(sum(a["amount"] for a in bs2["assets"]), 6000000)       # cash left: 60,000
         tb = rp.trial_balance(self.c, "2026-04-01", "2027-03-31")
         self.assertTrue(tb["balanced"] if "balanced" in tb else True)
+
+
+class TestTallyChart(unittest.TestCase):
+    def test_new_book_starts_like_tally(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
+            f = Path(d) / "t.db"; dbm.init_database(f); c = dbm.connect(f)
+            groups = [r["name"] for r in c.execute("SELECT name FROM acct_groups")]
+            for g in ("Branch / Divisions", "Capital Account", "Reserves & Surplus", "Current Assets", "Bank Accounts", "Cash-in-Hand", "Deposits (Asset)",
+                      "Loans & Advances (Asset)", "Stock-in-Hand", "Sundry Debtors", "Current Liabilities", "Duties & Taxes", "Provisions", "Sundry Creditors",
+                      "Direct Expenses", "Direct Incomes", "Fixed Assets", "Indirect Expenses", "Indirect Incomes", "Investments", "Loans (Liability)",
+                      "Bank OD A/c", "Secured Loans", "Unsecured Loans", "Misc. Expenses (ASSET)", "Purchase Accounts", "Sales Accounts", "Suspense A/c"):
+                self.assertIn(g, groups)
+            self.assertEqual(len(groups), 28)
+            self.assertEqual([r["name"] for r in c.execute("SELECT name FROM ledgers")], ["Cash"])
+            self.assertEqual(c.execute("SELECT COUNT(*) FROM cost_centres").fetchone()[0], 0)
+            self.assertEqual(c.execute("PRAGMA user_version").fetchone()[0], dbm.SCHEMA_VERSION)
+            c.close()
+
+
+class TestCreditDebitNotes(Base):
+    def test_notes_number_separately_and_reject_cash(self):
+        mk = lambda vt, dr, cr, d="2026-11-10": sv.save_voucher(self.c, {"vtype": vt, "date": d, "lines": [
+            {"ledger_id": self.L[dr], "side": "Dr", "amount": "500"}, {"ledger_id": self.L[cr], "side": "Cr", "amount": "500"}]})
+        a = mk("Credit Note", "Rubber Sales", "Advances Paid"); b = mk("Debit Note", "Advances Paid", "Rubber Sales"); c2 = mk("Credit Note", "Rubber Sales", "Advances Paid")
+        self.assertEqual((a["number"], b["number"], c2["number"]), (1, 1, 2))
+        with self.assertRaises(UserError): mk("Credit Note", "Rubber Sales", "Cash")
+
+
+class TestUpgradeFromOldBook(unittest.TestCase):
+    def test_v1_farm_book_is_upgraded_without_losing_entries(self):
+        import legacy_v1_db as old
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
+            f = Path(d) / "old.db"; old._create_fresh(f, dt.date(2026, 11, 19))
+            c = old.connect(f)
+            L = {r["name"]: r["id"] for r in c.execute("SELECT id, name FROM ledgers")}
+            c.execute("BEGIN IMMEDIATE")
+            c.execute("INSERT INTO vouchers(vtype, fy, number, vdate, narration, ref, date_approx, status, created_at, updated_at) VALUES ('Payment','2026-27',1,'2026-11-10','rice','',0,'posted','t','t')")
+            vid = c.execute("SELECT id FROM vouchers").fetchone()[0]
+            c.execute("INSERT INTO entries(voucher_id, line_no, ledger_id, debit_paise, credit_paise) VALUES (?,1,?,50000,0)", (vid, L["Groceries & Provisions"]))
+            c.execute("INSERT INTO entries(voucher_id, line_no, ledger_id, debit_paise, credit_paise) VALUES (?,2,?,0,50000)", (vid, L["Cash"]))
+            c.execute("UPDATE ledgers SET opening_paise=100000 WHERE name='Farm Land'")
+            c.execute("COMMIT"); c.close()
+            dbm.init_database(f)                                           # upgrade
+            c = dbm.connect(f)
+            self.assertEqual(c.execute("PRAGMA user_version").fetchone()[0], dbm.SCHEMA_VERSION)
+            self.assertEqual(c.execute("SELECT COUNT(*) FROM vouchers").fetchone()[0], 1)
+            self.assertEqual(c.execute("SELECT COUNT(*) FROM entries").fetchone()[0], 2)
+            names = {r["name"] for r in c.execute("SELECT name FROM ledgers")}
+            self.assertIn("Groceries & Provisions", names)                 # used: kept
+            self.assertIn("Farm Land", names)                              # has an opening balance: kept
+            self.assertNotIn("Goat Sales", names)                          # unused starter: tidied away
+            self.assertIn("Stock-in-Hand", {r["name"] for r in c.execute("SELECT name FROM acct_groups")})
+            self.assertEqual(c.execute("PRAGMA foreign_key_check").fetchall(), [])
+            self.assertTrue(list(Path(d).glob("homeledger-before-upgrade-*.db")))    # safety copy was made
+            v = sv.save_voucher(c, {"vtype": "Credit Note", "date": "2026-11-11", "lines": [
+                {"ledger_id": {r["name"]: r["id"] for r in c.execute("SELECT id, name FROM ledgers")}["Groceries & Provisions"], "side": "Dr", "amount": "5"},
+                {"ledger_id": {r["name"]: r["id"] for r in c.execute("SELECT id, name FROM ledgers")}["Farm Land"], "side": "Cr", "amount": "5"}]})
+            self.assertEqual(v["number"], 1)
+            c.close()
 
 
 class TestMoney(unittest.TestCase):

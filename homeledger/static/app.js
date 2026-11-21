@@ -40,6 +40,7 @@
     if (e.ctrlKey && e.key.toLowerCase() === "l") { e.preventDefault(); HL.lockNow(); return; }
     if (e.ctrlKey && e.key.toLowerCase() === "f") { e.preventDefault(); $("#qsearch").focus(); $("#qsearch").select(); return; }
     if (FKEYS[e.key] && HL.cur && HL.cur.name !== "voucher") { e.preventDefault(); HL.go("voucher", { vtype: FKEYS[e.key] }); return; }
+    if (e.ctrlKey && (e.key === "F8" || e.key === "F9") && HL.cur && HL.cur.name !== "voucher") { e.preventDefault(); HL.go("voucher", { vtype: e.key === "F8" ? "Credit Note" : "Debit Note" }); return; }
     if (e.key === "F3") { e.preventDefault(); HL.go("company"); return; }
     if (e.altKey && e.key === "F1") { e.preventDefault(); HL.go("dashboard"); return; }
     if (HL.cur && HL.cur.name === "gateway" && HL.onKey) { /* handled above */ }

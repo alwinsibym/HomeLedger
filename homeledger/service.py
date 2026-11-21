@@ -9,7 +9,7 @@ from . import db as dbm
 from .errors import UserError
 from .money import fmt_inr, fy_label, parse_amount, parse_iso, parse_opening, parse_qty
 
-VTYPES = ("Payment", "Receipt", "Contra", "Journal", "Sales", "Purchase")
+VTYPES = ("Payment", "Receipt", "Contra", "Journal", "Sales", "Purchase", "Credit Note", "Debit Note")
 NATURES = ("asset", "liability", "income", "expense")
 REAL = ("asset", "liability")
 NOMINAL = ("income", "expense")
@@ -80,7 +80,7 @@ def _cb_kind_for_group(conn, group_id):
             break
         if r["code"] == "CASH":
             return "cash"
-        if r["code"] == "BANK":
+        if r["code"] in ("BANK", "BANK_OD"):
             return "bank"
         gid = r["parent_id"]
         seen += 1
@@ -104,7 +104,7 @@ def save_ledger(conn, d: dict) -> dict:
                         "Opening balances are only for assets and liabilities (cash, bank, loans, land...).")
     cc = d.get("default_cc_id") or None
     if cc and not conn.execute("SELECT 1 FROM cost_centres WHERE id=?", (cc,)).fetchone():
-        raise UserError("The chosen activity no longer exists.")
+        raise UserError("The chosen cost centre no longer exists.")
     notes = _txt(d.get("notes"), 300, "Notes")
     with dbm.write_tx(conn):
         dup = conn.execute("SELECT id FROM ledgers WHERE name=? COLLATE NOCASE", (name,)).fetchone()
@@ -187,26 +187,25 @@ def delete_group(conn, gid: int) -> None:
 
 def save_cc(conn, d: dict) -> dict:
     cid = d.get("id")
-    name = _txt(d.get("name"), 60, "Activity name")
+    name = _txt(d.get("name"), 60, "Cost centre name")
     if not name:
-        raise UserError("Please enter an activity name.")
+        raise UserError("Please enter a cost centre name.")
     with dbm.write_tx(conn):
         dup = conn.execute("SELECT id FROM cost_centres WHERE name=? COLLATE NOCASE", (name,)).fetchone()
         if dup and dup["id"] != cid:
-            raise UserError(f"An activity named '{name}' already exists.")
+            raise UserError(f"A cost centre named '{name}' already exists.")
         if cid:
             if not conn.execute("SELECT 1 FROM cost_centres WHERE id=?", (cid,)).fetchone():
-                raise UserError("That activity no longer exists.")
+                raise UserError("That cost centre no longer exists.")
             conn.execute("UPDATE cost_centres SET name=?, is_active=? WHERE id=?",
                          (name, 0 if d.get("is_active") is False else 1, cid))
             dbm.audit(conn, "alter", "activity", cid, name)
         else:
-            parent = conn.execute("SELECT * FROM cost_centres WHERE id=?", (d.get("parent_id"),)).fetchone()
-            if not parent:
-                raise UserError("Please choose where this activity belongs (Household or Farm).")
+            parent = conn.execute("SELECT * FROM cost_centres WHERE id=?", (d.get("parent_id"),)).fetchone() \
+                if d.get("parent_id") else None
             cur = conn.execute(
                 "INSERT INTO cost_centres(name, parent_id, kind, sort) VALUES (?,?,?,1000)",
-                (name, parent["id"], parent["kind"]))
+                (name, parent["id"] if parent else None, parent["kind"] if parent else "other"))
             cid = cur.lastrowid
             dbm.audit(conn, "create", "activity", cid, name)
     return {"id": cid}
@@ -216,13 +215,11 @@ def delete_cc(conn, cid: int) -> None:
     with dbm.write_tx(conn):
         r = conn.execute("SELECT * FROM cost_centres WHERE id=?", (cid,)).fetchone()
         if not r:
-            raise UserError("That activity no longer exists.")
-        if r["parent_id"] is None:
-            raise UserError("Household and Farm are built in and cannot be deleted.")
+            raise UserError("That cost centre no longer exists.")
         if conn.execute("SELECT 1 FROM entries WHERE cc_id=?", (cid,)).fetchone() or \
                 conn.execute("SELECT 1 FROM ledgers WHERE default_cc_id=?", (cid,)).fetchone() or \
                 conn.execute("SELECT 1 FROM cost_centres WHERE parent_id=?", (cid,)).fetchone():
-            raise UserError("This activity is in use. Untick 'Active' to hide it instead of deleting.")
+            raise UserError("This cost centre is in use. Untick 'Active' to hide it instead of deleting.")
         conn.execute("DELETE FROM cost_centres WHERE id=?", (cid,))
         dbm.audit(conn, "delete", "activity", cid, r["name"])
 
@@ -322,7 +319,7 @@ def _prepare(conn, p: dict, existing: dict | None):
         cc = x.get("cc_id") or None
         if cc is not None:
             if not conn.execute("SELECT 1 FROM cost_centres WHERE id=?", (int(cc),)).fetchone():
-                raise UserError(f"Line {i}: the chosen activity no longer exists.")
+                raise UserError(f"Line {i}: the chosen cost centre no longer exists.")
             cc = int(cc)
         elif led["default_cc_id"]:
             cc = led["default_cc_id"]
@@ -361,6 +358,9 @@ def _prepare(conn, p: dict, existing: dict | None):
     elif vtype == "Journal":
         if any(cb(l) for l in lines):
             raise UserError("A Journal cannot use Cash or Bank accounts. Use Payment (F5) or Receipt (F6).")
+    elif vtype in ("Credit Note", "Debit Note"):
+        if any(cb(l) for l in lines):
+            raise UserError(f"A {vtype} cannot use Cash or Bank accounts. Settle it with a Payment (F5) or Receipt (F6).")
     narration = _txt(p.get("narration"), 500, "Narration")
     ref = _txt(p.get("ref"), 60, "Reference")
     return {"vtype": vtype, "vdate": vdate, "lines": lines, "narration": narration, "ref": ref,

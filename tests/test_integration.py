@@ -31,8 +31,20 @@ def callc(path, body=None, cookie=""):
         return e.code, json.loads(e.read() or b"null"), ""
 
 
+def _prepare_book(data):
+    """A new book starts like Tally (just Cash). The tests want the sample household chart as well."""
+    sys.path.insert(0, str(ROOT)); sys.path.insert(0, str(ROOT / "tests"))
+    from homeledger import db as dbm
+    import fixtures
+    f = Path(data) / "homeledger.db"
+    if not f.exists():
+        dbm.init_database(f)
+        c = dbm.connect(f); fixtures.install(c); c.close()
+
+
 class Proc:
     def __init__(self, data):
+        _prepare_book(data)
         env = dict(os.environ, HOMELEDGER_DATA=str(data), HOMELEDGER_PORT=str(PORT))
         self.p = subprocess.Popen([sys.executable, "-I", str(ROOT / "HomeLedger.pyw"), "--no-window"], env=env,
                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT)

@@ -5,7 +5,7 @@
 HL.ledgerForm = function ({ id, name, onsaved }) {
   const L = id ? M().ledgers.find(l => l.id === id) : null;
   const nm = h("input", { type: "text", value: L ? L.name : (name || ""), maxlength: "60", "aria-label": "Ledger name" });
-  const grp = picker({ options: () => groupOptions(), value: L ? L.group_id : null, placeholder: "Choose a group (e.g. Household Expenses)", width: "100%" });
+  const grp = picker({ options: () => groupOptions(), value: L ? L.group_id : null, placeholder: "Choose a group (e.g. Indirect Expenses)", width: "100%" });
   const op = h("input", { type: "text", inputmode: "decimal", class: "amt", value: L && L.opening_paise ? (L.opening_paise / 100).toFixed(2) : "", "aria-label": "Opening balance" });
   const ot = h("select", { "aria-label": "Dr or Cr" }, h("option", { value: "Dr" }, "Dr (you have / are owed)"), h("option", { value: "Cr" }, "Cr (you owe)")); ot.value = L ? L.opening_type : "Dr";
   const cc = picker({ options: () => ccOptions(true), value: L ? L.default_cc_id : null, placeholder: "None", width: "100%" });
@@ -14,7 +14,7 @@ HL.ledgerForm = function ({ id, name, onsaved }) {
   const body = h("div", { class: "fgrid", style: "grid-template-columns:1fr" },
     h("label", { class: "f" }, "Name", nm), h("label", { class: "f" }, "Under group", grp.el),
     h("div", { class: "row" }, h("label", { class: "f" }, "Opening balance (only for cash, bank, loans, land, etc.)", h("span", { class: "row" }, op, ot))),
-    h("label", { class: "f" }, "Usual activity (auto-filled in vouchers)", cc.el), h("label", { class: "f" }, "Notes", notes),
+    h("label", { class: "f" }, "Usual cost centre (auto-filled in vouchers)", cc.el), h("label", { class: "f" }, "Notes", notes),
     L ? h("label", { class: "f", style: "flex-direction:row;gap:.4rem;align-items:center" }, act, "Active (untick to hide from lists)") : "");
   enterAsTab(body, () => doSave());
   let m;
@@ -36,8 +36,8 @@ HL.screens.masters = {
   async render(sc, params) {
     await loadMasters();
     const tab = params.tab || "ledgers";
-    const tabs = h("div", { class: "chips", style: "margin-bottom:.8rem" }, [["ledgers", "Ledgers"], ["groups", "Groups"], ["activities", "Activities"]].map(([k, l]) => h("button", { class: "chip" + (tab === k ? " on" : ""), type: "button", onclick: () => { HL.cur.params = { tab: k }; HL.refresh(); } }, l)));
-    const root = h("div", {}, h("h1", { class: "title" }, "Masters"), h("p", { class: "sub" }, "Ledgers are your accounts (Cash, Groceries, Rubber Sales...). Groups collect ledgers. Activities tag entries to farm or household work."), tabs);
+    const tabs = h("div", { class: "chips", style: "margin-bottom:.8rem" }, [["ledgers", "Ledgers"], ["groups", "Groups"], ["activities", "Cost Centres"]].map(([k, l]) => h("button", { class: "chip" + (tab === k ? " on" : ""), type: "button", onclick: () => { HL.cur.params = { tab: k }; HL.refresh(); } }, l)));
+    const root = h("div", {}, h("h1", { class: "title" }, "Masters"), h("p", { class: "sub" }, "Ledgers are your accounts (Cash, Groceries, Sales...). Groups collect ledgers. Cost centres tag entries to a purpose or place (optional)."), tabs);
     let keys = [BACK];
     if (tab === "ledgers") {
       const filt = h("input", { type: "search", placeholder: "Filter ledgers...", "aria-label": "Filter", style: "min-width:16rem" });
@@ -59,6 +59,7 @@ HL.screens.masters = {
         if (await confirmBox("Delete ledger?", "Delete '" + l.name + "'? This only works for ledgers that have never been used.", "Delete", true)) { try { await HL.post("/api/ledger/delete", { id: l.id }); say("Deleted.", "ok"); HL.refresh(); } catch (e) { fail(e); } }
       } });
       HL.onKey = e => { if (e.altKey && e.key.toLowerCase() === "c") { e.preventDefault(); HL.ledgerForm({ onsaved: () => HL.refresh() }); return true; } };
+      if (params.create) { params.create = 0; setTimeout(() => HL.ledgerForm({ onsaved: () => HL.refresh() }), 60); }
     } else if (tab === "groups") {
       const t = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, ["Group", "Kind", ""].map(x => h("th", {}, x)))));
       const tb = h("tbody", {}); t.append(tb);
@@ -76,24 +77,26 @@ HL.screens.masters = {
         async function save() { try { await HL.post("/api/group/save", { id: g && g.id, name: nmI.value, parent_id: par.value }); m.close(); await loadMasters(); HL.refresh(); } catch (e) { fail(e); } }
       };
       keys.push({ k: "Alt+C", label: "Create group", fn: () => editGroup(null) });
+      if (params.create) { params.create = 0; setTimeout(() => editGroup(null), 60); }
     } else {
-      const t = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, ["Activity", "Belongs to", "Kind"].map(x => h("th", {}, x)))));
+      const t = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, ["Cost Centre", "Under"].map(x => h("th", {}, x)))));
       const tb = h("tbody", {}); t.append(tb);
       const byP = {}; M().cost_centres.forEach(c => (byP[c.parent_id || 0] ||= []).push(c));
       const nameOf = id => (M().cost_centres.find(c => c.id === id) || {}).name || "";
       const editCc = c => {
-        const nmI = h("input", { type: "text", value: c ? c.name : "", maxlength: "60", "aria-label": "Activity name" });
-        const par = picker({ options: () => M().cost_centres.filter(x => !x.parent_id).map(x => ({ value: x.id, label: x.name })), value: c ? c.parent_id : null, placeholder: "Household or Farm", width: "100%" });
+        const nmI = h("input", { type: "text", value: c ? c.name : "", maxlength: "60", "aria-label": "Cost centre name" });
+        const par = picker({ options: () => M().cost_centres.filter(x => !x.parent_id).map(x => ({ value: x.id, label: x.name })), value: c ? c.parent_id : null, placeholder: "None (top level)", width: "100%" });
         const act = h("input", { type: "checkbox", checked: c ? !!c.is_active : true });
-        const body = h("div", { class: "fgrid", style: "grid-template-columns:1fr" }, h("label", { class: "f" }, "Activity name (e.g. Coconut, Poultry)", nmI), c ? "" : h("label", { class: "f" }, "Belongs to", par.el), c ? h("label", { class: "f", style: "flex-direction:row;gap:.4rem;align-items:center" }, act, "Active") : "");
-        const m = modal({ title: c ? "Activity Alteration" : "Activity Creation", body, buttons: [c && c.parent_id ? { label: "Delete", cls: "danger", onclick: async m2 => { if (await confirmBox("Delete activity?", "Only activities that were never used can be deleted. Otherwise untick Active.", "Delete", true)) { try { await HL.post("/api/cc/delete", { id: c.id }); m2.close(); await loadMasters(); HL.refresh(); } catch (e) { fail(e); } } } } : null, { label: "Cancel", onclick: m => m.close() }, { label: "Accept", cls: "primary", onclick: save }].filter(Boolean) });
+        const body = h("div", { class: "fgrid", style: "grid-template-columns:1fr" }, h("label", { class: "f" }, "Cost centre name", nmI), c ? "" : h("label", { class: "f" }, "Belongs to", par.el), c ? h("label", { class: "f", style: "flex-direction:row;gap:.4rem;align-items:center" }, act, "Active") : "");
+        const m = modal({ title: c ? "Cost Centre Alteration" : "Cost Centre Creation", body, buttons: [c ? { label: "Delete", cls: "danger", onclick: async m2 => { if (await confirmBox("Delete activity?", "Only activities that were never used can be deleted. Otherwise untick Active.", "Delete", true)) { try { await HL.post("/api/cc/delete", { id: c.id }); m2.close(); await loadMasters(); HL.refresh(); } catch (e) { fail(e); } } } } : null, { label: "Cancel", onclick: m => m.close() }, { label: "Accept", cls: "primary", onclick: save }].filter(Boolean) });
         enterAsTab(body, save);
         async function save() { try { await HL.post("/api/cc/save", { id: c && c.id, name: nmI.value, parent_id: par.value, is_active: act.checked }); m.close(); await loadMasters(); HL.refresh(); } catch (e) { fail(e); } }
       };
       const add = (c, d) => { const tr = h("tr", { class: "row", tabindex: "0", onclick: () => editCc(c) }, h("td", { class: "ind" + d }, c.name, c.is_active ? "" : h("span", { class: "tag", style: "margin-left:.5rem" }, "hidden")), h("td", {}, nameOf(c.parent_id)), h("td", {}, c.kind === "farm" ? "Farm" : "Household")); rowKeys(tr); tb.append(tr); (byP[c.id] || []).forEach(k => add(k, d + 1)); };
       (byP[0] || []).forEach(c => add(c, 0));
       root.append(h("div", { class: "scroll" }, t));
-      keys.push({ k: "Alt+C", label: "Create activity", fn: () => editCc(null) });
+      keys.push({ k: "Alt+C", label: "Create cost centre", fn: () => editCc(null) });
+      if (params.create) { params.create = 0; setTimeout(() => editCc(null), 60); }
     }
     sc.replaceChildren(root); const f = $("tbody tr.row", root); f && f.focus(); HL.setKeys(keys);
   },

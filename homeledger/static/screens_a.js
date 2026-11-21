@@ -1,73 +1,118 @@
 /* Screens, part 1: Gateway, Dashboard, Voucher entry, Day Book */
 "use strict";
 
-/* ===================== GATEWAY ===================== */
-HL.screens.gateway = {
-  title: "",
-  async render(sc) {
-    await loadMasters();
-    const items = [
-      ["h", "Daily work"],
-      ["i", "D", "Dashboard", "Overview and charts", () => HL.go("dashboard")],
-      ["i", "V", "Accounting Vouchers", "Payment, Receipt...", () => HL.go("voucher", { vtype: "Payment" })],
-      ["i", "B", "Day Book", "All entries day by day", () => HL.go("daybook")],
-      ["i", "S", "Search", "Find any entry", () => HL.go("search")],
-      ["h", "Reports"],
-      ["i", "L", "Ledger", "Statement of any account", () => HL.go("ledgers_pick")],
-      ["i", "C", "Cash / Bank Book", "Money in hand and in bank", () => HL.go("cashbook")],
-      ["i", "T", "Trial Balance", "", () => HL.go("tb")],
-      ["i", "P", "Profit & Loss", "Income less spending", () => HL.go("pnl")],
-      ["i", "H", "Balance Sheet", "What you own and owe", () => HL.go("bs")],
-      ["i", "F", "Farm & Household Activities", "Rubber, cattle, crops...", () => HL.go("activities")],
-      ["i", "I", "Commodities (Items)", "Fertilizer, milk, rubber...", () => HL.go("commodities")],
-      ["h", "Setup"],
-      ["i", "M", "Masters", "Ledgers, groups, activities", () => HL.go("masters")],
-      ["i", "O", "Opening Balances", "Start-up cash, bank, loans", () => HL.go("openings")],
-      ["i", "U", "Utilities", "Backup, health check, export", () => HL.go("utilities")],
-      ["i", "Q", "Quit", "Close HomeLedger", () => HL.quit()],
-    ];
-    const ul = h("ul", { class: "menu", role: "menu" });
-    const sel = items.filter(x => x[0] === "i");
-    let idx = HL._gateIdx || 0;
-    const lis = [];
-    for (const it of items) {
-      if (it[0] === "h") { ul.append(h("li", { class: "h" }, it[1])); continue; }
-      const li = h("li", { class: "i", role: "menuitem", tabindex: "-1", onclick: () => { HL._gateIdx = sel.indexOf(it); it[4](); } },
-        h("span", { class: "hot" }, it[1]), it[2], it[3] ? h("span", { class: "d" }, it[3]) : "");
-      lis.push(li); ul.append(li);
+/* ===================== MENUS: Gateway of HomeLedger, laid out like Tally ===================== */
+HL.menus = (() => {
+  const go = (n, p) => () => HL.go(n, p);
+  const menu = id => () => HL.go("menu", { id });
+  const util = tab => go("utilities", { tab });
+  const cad = (title, tab) => ({ title, sub: "Masters \u203a " + title, items: [
+    ["i", "C", "Create", "Add a new one", go("masters", { tab, create: 1 })],
+    ["i", "D", "Display", "See the list", go("masters", { tab })],
+    ["i", "A", "Alter", "Change or delete an existing one", go("masters", { tab })]] });
+  return {
+    root: { title: "Gateway of HomeLedger", items: [
+      ["i", "M", "Masters", "Groups, ledgers, cost centres", menu("masters")],
+      ["i", "T", "Transactions", "Vouchers and Day Book", menu("transactions")],
+      ["i", "U", "Utilities", "Backup, health check, export, security", menu("utilities")],
+      ["i", "R", "Reports", "Balance Sheet, Profit & Loss, Trial Balance", menu("reports")],
+      ["i", "D", "Display", "Ledgers, books, search, more reports", menu("display")],
+      ["i", "H", "Dashboard", "Overview and charts", go("dashboard")],
+      ["i", "Q", "Quit", "Close HomeLedger", () => HL.quit()]] },
+    masters: { title: "Masters", sub: "Accounts Info", items: [
+      ["h", "Accounts Info"],
+      ["i", "G", "Groups", "", menu("m_groups")],
+      ["i", "L", "Ledgers", "", menu("m_ledgers")],
+      ["i", "C", "Cost Centres", "", menu("m_cc")],
+      ["i", "O", "Opening Balances", "Start-up cash, bank, loans", go("openings")],
+      ["i", "I", "Company Info", "Name and books beginning date (F3)", go("company")]] },
+    m_groups: cad("Groups", "groups"), m_ledgers: cad("Ledgers", "ledgers"), m_cc: cad("Cost Centres", "activities"),
+    transactions: { title: "Transactions", sub: "Accounting Vouchers", items: [
+      ["h", "Accounting Vouchers"],
+      ["i", "P", "Payment", "F5", go("voucher", { vtype: "Payment" })],
+      ["i", "R", "Receipt", "F6", go("voucher", { vtype: "Receipt" })],
+      ["i", "C", "Contra", "F4", go("voucher", { vtype: "Contra" })],
+      ["i", "J", "Journal", "F7", go("voucher", { vtype: "Journal" })],
+      ["i", "S", "Sales", "F8", go("voucher", { vtype: "Sales" })],
+      ["i", "U", "Purchase", "F9", go("voucher", { vtype: "Purchase" })],
+      ["i", "N", "Credit Note", "Ctrl+F8", go("voucher", { vtype: "Credit Note" })],
+      ["i", "E", "Debit Note", "Ctrl+F9", go("voucher", { vtype: "Debit Note" })],
+      ["h", "Books"],
+      ["i", "B", "Day Book", "All entries day by day", go("daybook")]] },
+    utilities: { title: "Utilities", items: [
+      ["i", "B", "Backup & Restore", "Safe copies of your books", util("backup")],
+      ["i", "H", "Health Check", "Verify the data file", util("health")],
+      ["i", "E", "Export", "Everything to Excel files", util("export")],
+      ["i", "S", "Settings", "Text size, look", util("settings")],
+      ["i", "Y", "Security", "Sign-in and users", util("security")],
+      ["i", "A", "Audit Trail", "Who changed what", util("audit")]] },
+    reports: { title: "Reports", items: [
+      ["i", "B", "Balance Sheet", "What you own and owe", go("bs")],
+      ["i", "P", "Profit & Loss A/c", "Income less spending", go("pnl")],
+      ["i", "T", "Trial Balance", "All ledgers", go("tb")]] },
+    display: { title: "Display", sub: "More Reports", items: [
+      ["h", "Account Books"],
+      ["i", "L", "Ledger", "Statement of any account", go("ledgers_pick")],
+      ["i", "C", "Cash / Bank Book", "Money in hand and in bank", go("cashbook")],
+      ["i", "D", "Day Book", "All entries day by day", go("daybook")],
+      ["h", "Statements"],
+      ["i", "S", "Search", "Find any entry (Ctrl+F)", go("search")],
+      ["i", "O", "Cost Centres", "Income and spending by cost centre", go("activities")],
+      ["i", "I", "Item-wise Report", "By item name", go("commodities")]] },
+  };
+})();
+
+function renderMenu(sc, id) {
+  const def = HL.menus[id] || HL.menus.root, root = id === "root";
+  const items = def.items;
+  const ul = h("ul", { class: "menu", role: "menu" });
+  const sel = items.filter(x => x[0] === "i");
+  HL._menuIdx = HL._menuIdx || {};
+  let idx = Math.min(HL._menuIdx[id] || 0, sel.length - 1);
+  const lis = [];
+  const run = i => { HL._menuIdx[id] = i; sel[i][4](); };
+  for (const it of items) {
+    if (it[0] === "h") { ul.append(h("li", { class: "h" }, it[1])); continue; }
+    const li = h("li", { class: "i", role: "menuitem", tabindex: "-1", onclick: () => run(sel.indexOf(it)) },
+      h("span", { class: "hot" }, it[1]), it[2], it[3] ? h("span", { class: "d" }, it[3]) : "");
+    lis.push(li); ul.append(li);
+  }
+  const paint = () => lis.forEach((l, i) => { l.classList.toggle("sel", i === idx); if (i === idx) l.scrollIntoView({ block: "nearest" }); });
+  paint();
+  HL.onKey = e => {
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;   // typing in the search box must not trigger menu hotkeys
+    if (e.key === "ArrowDown") { idx = (idx + 1) % lis.length; paint(); e.preventDefault(); }
+    else if (e.key === "ArrowUp") { idx = (idx - 1 + lis.length) % lis.length; paint(); e.preventDefault(); }
+    else if (e.key === "Enter") { run(idx); e.preventDefault(); }
+    else if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key.length === 1) {
+      const k = e.key.toUpperCase(), i = sel.findIndex(x => x[1] === k);
+      if (i >= 0) { run(i); e.preventDefault(); }
     }
-    const paint = () => lis.forEach((l, i) => { l.classList.toggle("sel", i === idx); if (i === idx) l.scrollIntoView({ block: "nearest" }); });
-    paint();
-    HL.onKey = e => {
-      if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;   // typing in the search box must not trigger menu hotkeys
-      if (e.key === "ArrowDown") { idx = (idx + 1) % lis.length; paint(); e.preventDefault(); }
-      else if (e.key === "ArrowUp") { idx = (idx - 1 + lis.length) % lis.length; paint(); e.preventDefault(); }
-      else if (e.key === "Enter") { HL._gateIdx = idx; sel[idx][4](); e.preventDefault(); }
-      else if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key.length === 1) {
-        const k = e.key.toUpperCase(), i = sel.findIndex(x => x[1] === k);
-        if (i >= 0) { HL._gateIdx = i; sel[i][4](); e.preventDefault(); }
-      }
-    };
-    const c = HL.S.status.company;
-    sc.replaceChildren(
-      noticeBanner(),
-      h("div", { class: "gate-wrap", style: "flex-direction:column;align-items:center" }, h("img", { class: "gate-logo", src: "logo.png", alt: "HomeLedger" }), h("div", { class: "gate" }, h("div", { class: "hd" }, "Gateway of HomeLedger"),
-        h("div", { style: "padding:.5rem 1rem;text-align:center;border-bottom:1px solid var(--line-soft)" },
-          h("div", { class: "muted", style: "font-size:.85em" }, "Current book"), h("b", {}, c.name),
-          h("div", { class: "muted", style: "font-size:.85em" }, "Today: " + showDay(todayIso()) + ", " + showDate(todayIso()))),
-        ul)),
-      backupWarning());
-    HL.setKeys([
-      { k: "F5", label: "Payment", fn: () => HL.go("voucher", { vtype: "Payment" }) },
-      { k: "F6", label: "Receipt", fn: () => HL.go("voucher", { vtype: "Receipt" }) },
-      { k: "F4", label: "Contra", fn: () => HL.go("voucher", { vtype: "Contra" }) },
-      { k: "F7", label: "Journal", fn: () => HL.go("voucher", { vtype: "Journal" }) },
-      "sep",
-      { k: "F3", label: "Company Info", fn: () => HL.go("company") },
-      { k: "Alt+F1", label: "Dashboard", fn: () => HL.go("dashboard") },
-    ]);
-  },
-};
+  };
+  const c = HL.S.status.company;
+  const head = root
+    ? h("div", { style: "padding:.5rem 1rem;text-align:center;border-bottom:1px solid var(--line-soft)" },
+        h("div", { class: "muted", style: "font-size:.85em" }, "Current book"), h("b", {}, c.name),
+        h("div", { class: "muted", style: "font-size:.85em" }, "Today: " + showDay(todayIso()) + ", " + showDate(todayIso())))
+    : (def.sub ? h("div", { class: "muted", style: "padding:.4rem 1rem;text-align:center;border-bottom:1px solid var(--line-soft);font-size:.9em" }, def.sub + " \u00b7 " + c.name) : "");
+  sc.replaceChildren(noticeBanner(),
+    h("div", { class: "gate-wrap", style: "flex-direction:column;align-items:center" }, root ? h("img", { class: "gate-logo", src: "logo.png", alt: "HomeLedger" }) : "",
+      h("div", { class: "gate" }, h("div", { class: "hd" }, def.title), head, ul)),
+    root ? backupWarning() : "");
+  const keys = root ? [] : [BACK, "sep"];
+  keys.push(
+    { k: "F5", label: "Payment", fn: () => HL.go("voucher", { vtype: "Payment" }) },
+    { k: "F6", label: "Receipt", fn: () => HL.go("voucher", { vtype: "Receipt" }) },
+    { k: "F4", label: "Contra", fn: () => HL.go("voucher", { vtype: "Contra" }) },
+    { k: "F7", label: "Journal", fn: () => HL.go("voucher", { vtype: "Journal" }) },
+    "sep",
+    { k: "Alt+G", label: "Go To", fn: () => HL.openGoTo() },
+    { k: "F3", label: "Company Info", fn: () => HL.go("company") },
+    { k: "Alt+F1", label: "Dashboard", fn: () => HL.go("dashboard") });
+  HL.setKeys(keys);
+}
+HL.screens.gateway = { title: "", async render(sc) { await loadMasters(); renderMenu(sc, "root"); } };
+HL.screens.menu = { title: p => (HL.menus[p.id] || {}).title || "", async render(sc, params) { await loadMasters(); renderMenu(sc, params.id); } };
 function noticeBanner() {
   const n = HL.S.status && HL.S.status.notice;
   if (!n) return "";
@@ -111,7 +156,6 @@ HL.screens.dashboard = {
     }
     if (d.top_expenses.length && pe > 0) { const t = d.top_expenses[0]; ins.push(["b", `Biggest spending in this period: ${t.name}, ${rs(t.amount, 0)} (${Math.round(t.amount / pe * 100)}% of all spending).`]); }
     if (pi || pe) ins.push([pi - pe >= 0 ? "g" : "b", pi - pe >= 0 ? `In this period you earned ${rs(pi, 0)} and spent ${rs(pe, 0)}: ${rs(pi - pe, 0)} saved.` : `In this period you spent ${rs(pe, 0)} but earned ${rs(pi, 0)}: spending was ${rs(pe - pi, 0)} more than income.`]);
-    if (c.farm_income || c.farm_expense) ins.push([c.farm_income >= c.farm_expense ? "g" : "w", `Farm: earned ${rs(c.farm_income, 0)}, spent ${rs(c.farm_expense, 0)} → ${c.farm_income >= c.farm_expense ? "surplus " + rs(c.farm_income - c.farm_expense, 0) : "spent " + rs(c.farm_expense - c.farm_income, 0) + " more than it earned (so far)."}`]);
     if (c.loans > 0) ins.push(["w", `Loans / money borrowed still to repay: ${rs(c.loans, 0)}.`]);
     if (c.money_lent > 0) ins.push(["", `Money to receive from others: ${rs(c.money_lent, 0)}.`]);
     if (d.last_date && d.last_date < addDays(todayIso(), -7)) ins.push(["w", `The last entry is dated ${showDate(d.last_date)}. If there are newer bills or notes, remember to enter them.`]);
@@ -123,8 +167,8 @@ HL.screens.dashboard = {
       kpi("Bank balance", rs(c.bank, 0), "All bank accounts", c.bank < 0 ? "neg" : ""),
       kpi("Spent this month", rs(c.month_expense, 0), c.last_month_expense ? "Last month: " + rs(c.last_month_expense, 0) : "Since " + showDate(c.month_start)),
       kpi("Net worth", rs(c.net_worth, 0), "Assets minus loans & dues", c.net_worth < 0 ? "neg" : ""),
-      kpi("Income (period)", rs(pi, 0), "Household " + rs(c.house_income, 0) + " · Farm " + rs(c.farm_income, 0)),
-      kpi("Spending (period)", rs(pe, 0), "Household " + rs(c.house_expense, 0) + " · Farm " + rs(c.farm_expense, 0)),
+      kpi("Income (period)", rs(pi, 0), periodText()),
+      kpi("Spending (period)", rs(pe, 0), periodText()),
       kpi("Saved (period)", rs(pi - pe, 0), pi - pe >= 0 ? "Income more than spending" : "Spending more than income", pi - pe < 0 ? "neg" : "pos"),
       kpi("Loans to repay", rs(c.loans, 0), c.money_lent ? "Money to receive: " + rs(c.money_lent, 0) : ""));
     if (ins.length) grid.append(h("div", { class: "card c12" }, h("h3", {}, "What stands out"), h("ul", { class: "insights" }, ins.map(([k, t]) => h("li", { class: k }, t)))));
@@ -135,12 +179,7 @@ HL.screens.dashboard = {
       legend: [{ name: "Income", color: "var(--s1)" }, { name: "Spending", color: "var(--s2)" }],
       draw: () => barChart({ data: data1, series: [{ name: "Income", c: 1 }, { name: "Spending", c: 2 }], onbar: drillMonth }),
       table: () => simpleTable(["Month", "Income", "Spending"], months.map(m => [monthLabel(m.month, true), rs(m.income), rs(m.expense)])) }));
-    const bl = [{ name: "Household", color: "var(--s7)" }, { name: "Farm", color: "var(--s3)" }, { name: "Not tagged", color: "var(--s4)" }];
-    grid.append(chartCard({ cls: "c4", title: "Household vs farm spending", sub: "Last 12 months",
-      legend: bl,
-      draw: () => barChart({ stacked: true, height: 330, width: 400, data: months.map(m => ({ label: monthLabel(m.month).split(" ")[0], long: lng(m), ym: m.month, vals: [m.house_expense, m.farm_expense, m.other_expense] })), series: [{ name: "Household", c: 7 }, { name: "Farm", c: 3 }, { name: "Not tagged", c: 4 }], onbar: drillMonth }),
-      table: () => simpleTable(["Month", "Household", "Farm", "Not tagged"], months.map(m => [monthLabel(m.month, true), rs(m.house_expense), rs(m.farm_expense), rs(m.other_expense)])) }));
-    grid.append(chartCard({ cls: "c6", title: "Cash + bank balance", sub: "At the end of each month",
+    grid.append(chartCard({ cls: "c4", title: "Cash + bank balance", sub: "At the end of each month",
       draw: () => lineChart({ data: months.map(m => ({ label: lab(m), long: lng(m), vals: [m.cash_bank] })), series: [{ name: "Cash + bank", c: 1 }] }),
       table: () => simpleTable(["Month", "Cash + bank"], months.map(m => [monthLabel(m.month, true), rs(m.cash_bank)])) }));
     grid.append(chartCard({ cls: "c6", title: "Net worth", sub: "Everything you own minus everything you owe",
@@ -151,7 +190,7 @@ HL.screens.dashboard = {
     grid.append(
       card("Where the money went", "Top spending accounts · click one for its statement", hbars(d.top_expenses.map(x => ({ label: x.name, value: x.amount, onclick: toLedger(x.id) })), { color: 2 }), "c6"),
       card("Where the money came from", "Income accounts", hbars(d.top_income.map(x => ({ label: x.name, value: x.amount, onclick: toLedger(x.id) })), { color: 1 }), "c6"),
-      card("Spending by activity", "Farm and household activities · click for details", hbars(d.by_activity.map(x => ({ label: x.name, value: x.amount, color: x.kind === "farm" ? "var(--s3)" : "var(--s7)", sub: x.kind === "farm" ? "Farm" : "Household", onclick: () => HL.go("activity", { cc_id: x.id }) }))), "c6"),
+      d.by_activity.length ? card("Spending by cost centre", "Click for details", hbars(d.by_activity.map(x => ({ label: x.name, value: x.amount, color: "var(--s7)", onclick: () => HL.go("activity", { cc_id: x.id }) })), { color: 7 }), "c6") : "",
       card("Most bought items", "By amount (items entered with a quantity or name)", hbars(d.top_items.map(x => ({ label: x.item, value: x.amount, onclick: () => HL.go("search", { item: x.item }) })), { color: 5 }), "c6"));
     const rec = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, ["Date", "Type", "No.", "Particulars", "Amount"].map((x, i) => h("th", { class: i === 4 ? "r" : "" }, x)))));
     const tb = h("tbody", {});
@@ -172,7 +211,7 @@ HL.screens.dashboard = {
 };
 
 /* ===================== VOUCHER ENTRY ===================== */
-const VOUCHER_KEYS = { Contra: "F4", Payment: "F5", Receipt: "F6", Journal: "F7", Sales: "F8", Purchase: "F9" };
+const VOUCHER_KEYS = { Contra: "F4", Payment: "F5", Receipt: "F6", Journal: "F7", Sales: "F8", Purchase: "F9", "Credit Note": "Ctrl+F8", "Debit Note": "Ctrl+F9" };
 const VOUCHER_HELP = {
   Payment: "Money paid out. Choose what the money was spent on; the Cash/Bank account above is reduced.",
   Receipt: "Money received. Choose where it came from; the Cash/Bank account above is increased.",
@@ -180,6 +219,8 @@ const VOUCHER_HELP = {
   Journal: "An adjustment that does not move cash or bank (for example, a bill to be paid later). Debits must equal credits.",
   Sales: "A sale. Debit who owes you (or the account the produce was received into); credit the sales account. Use Receipt (F6) when money is actually received.",
   Purchase: "A purchase on credit or an asset purchase. Debit the item bought; credit who you owe. Use Payment (F5) when you pay.",
+  "Credit Note": "Goods returned by a customer, or a price reduction given. Debit the sales account; credit the customer. Not for cash: settle with a Payment (F5).",
+  "Debit Note": "Goods returned to a supplier, or a price reduction received. Debit the supplier; credit the purchase account. Not for cash: settle with a Receipt (F6).",
 };
 HL.screens.voucher = {
   title: p => (p.id ? "Alter " : "") + (p.vtype || "Voucher"),
@@ -360,11 +401,12 @@ HL.screens.voucher = {
     const sw = t => () => { if (!S.dirty || confirm("Switch voucher type? The current entry has not been saved.")) { S.dirty = false; HL.go("voucher", { vtype: t, date: S.date }, { replace: true }); } };
     HL.onKey = e => {
       if (e.ctrlKey && e.key.toLowerCase() === "a") { e.preventDefault(); save(); return true; }
-      const t = Object.keys(VOUCHER_KEYS).find(k => VOUCHER_KEYS[k] === e.key);
+      const kk = (e.ctrlKey ? "Ctrl+" : "") + e.key;
+      const t = Object.keys(VOUCHER_KEYS).find(k => VOUCHER_KEYS[k] === kk);
       if (t && !v) { e.preventDefault(); sw(t)(); return true; }
     };
     const keys = [{ k: "Ctrl+A", label: "Accept (save)", fn: save }, { k: "Esc", label: "Back", fn: HL.back }, "sep"];
-    if (!v) for (const t of ["Contra", "Payment", "Receipt", "Journal", "Sales", "Purchase"]) keys.push({ k: VOUCHER_KEYS[t], label: t, fn: sw(t) });
+    if (!v) for (const t of ["Contra", "Payment", "Receipt", "Journal", "Sales", "Purchase", "Credit Note", "Debit Note"]) keys.push({ k: VOUCHER_KEYS[t], label: t, fn: sw(t) });
     if (v) {
       keys.push({ k: "", label: v.status === "cancelled" ? "Restore voucher" : "Cancel voucher", fn: async () => {
         const cancelling = v.status !== "cancelled";
@@ -387,7 +429,7 @@ HL.screens.daybook = {
   async render(sc, params) {
     await loadMasters();
     const P = getPeriod();
-    const typeSel = h("select", { "aria-label": "Voucher type" }, h("option", { value: "" }, "All types"), ["Payment", "Receipt", "Contra", "Journal", "Sales", "Purchase"].map(t => h("option", { value: t }, t)));
+    const typeSel = h("select", { "aria-label": "Voucher type" }, h("option", { value: "" }, "All types"), ["Payment", "Receipt", "Contra", "Journal", "Sales", "Purchase", "Credit Note", "Debit Note"].map(t => h("option", { value: t }, t)));
     typeSel.value = params.vtype || "";
     const filt = h("input", { type: "search", placeholder: "Filter these rows...", "aria-label": "Filter rows", style: "min-width:14rem" });
     const canc = h("input", { type: "checkbox", id: "showc" }); canc.checked = !!params.cancelled;

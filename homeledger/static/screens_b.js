@@ -52,7 +52,7 @@ HL.screens.ledger = {
     const reload = () => HL.refresh();
     const root = h("div", {}, h("h1", { class: "title" }, r.name), h("p", { class: "sub" }, (params.group_id ? "Group · " : "") + periodText() + (monthly ? " · Monthly summary" : "")), periodBar(reload));
     const real = r.nature === "asset" || r.nature === "liability";
-    const tblHead = monthly ? ["Month", "Entries", "Debit", "Credit", "Closing balance"] : ["Date", "Particulars", "Activity / Item", "Type", "No.", "Debit", "Credit", "Balance"];
+    const tblHead = monthly ? ["Month", "Entries", "Debit", "Credit", "Closing balance"] : ["Date", "Particulars", "Cost Centre / Item", "Type", "No.", "Debit", "Credit", "Balance"];
     const t = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, tblHead.map((x, i) => h("th", { class: (monthly ? i > 0 : i >= 5) ? "r" : "" }, x)))));
     const tb = h("tbody", {}); t.append(tb);
     const trs = [];
@@ -169,15 +169,15 @@ HL.screens.bs = {
 
 /* ===================== activities (farm / household) ===================== */
 HL.screens.activities = {
-  title: "Activities",
+  title: "Cost Centres",
   async render(sc) {
     await loadMasters();
     const P = getPeriod(), r = await HL.get("/api/activities", { from: P.from, to: P.to });
     const byParent = {}; r.rows.forEach(c => (byParent[c.parent_id || 0] ||= []).push(c));
     const roll = c => { const kids = (byParent[c.id] || []).map(roll); return { c, kids, income: c.income + kids.reduce((s, k) => s + k.income, 0), expense: c.expense + kids.reduce((s, k) => s + k.expense, 0), assets: c.assets_net + kids.reduce((s, k) => s + k.assets, 0) }; };
     const tree = (byParent[0] || []).map(roll);
-    const root = h("div", {}, h("h1", { class: "title" }, "Farm & Household Activities"), h("p", { class: "sub" }, periodText() + " · income and spending tagged to each activity"), periodBar(() => HL.refresh()));
-    const t = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, ["Activity", "Income", "Spending", "Surplus / (Shortfall)", "Assets bought"].map((x, i) => h("th", { class: i ? "r" : "" }, x)))));
+    const root = h("div", {}, h("h1", { class: "title" }, "Cost Centres"), h("p", { class: "sub" }, periodText() + " · income and spending tagged to each cost centre"), periodBar(() => HL.refresh()));
+    const t = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, ["Cost Centre", "Income", "Spending", "Surplus / (Shortfall)", "Assets bought"].map((x, i) => h("th", { class: i ? "r" : "" }, x)))));
     const tb = h("tbody", {}); t.append(tb);
     const add = (n, depth) => {
       if (!n.income && !n.expense && !n.assets && depth > 0 && !n.c.is_active) return;
@@ -194,17 +194,17 @@ HL.screens.activities = {
     const kids = tree.flatMap(n => n.kids).filter(k => k.expense > 0 || k.income > 0);
     if (kids.length) {
       const g = h("div", { class: "dash-grid", style: "margin-top:.8rem" });
-      g.append(chartCard({ cls: "c12", title: "Income and spending by activity", sub: "Click a bar to open the activity", legend: [{ name: "Income", color: "var(--s1)" }, { name: "Spending", color: "var(--s2)" }],
+      g.append(chartCard({ cls: "c12", title: "Income and spending by cost centre", sub: "Click a bar to open the cost centre", legend: [{ name: "Income", color: "var(--s1)" }, { name: "Spending", color: "var(--s2)" }],
         draw: () => barChart({ data: kids.map(k => ({ label: k.c.name.length > 9 ? k.c.name.slice(0, 8) + "…" : k.c.name, long: k.c.name, id: k.c.id, vals: [k.income, k.expense] })), series: [{ name: "Income", c: 1 }, { name: "Spending", c: 2 }], onbar: d => HL.go("activity", { cc_id: d.id }) }),
-        table: () => simpleTable(["Activity", "Income", "Spending"], kids.map(k => [k.c.name, rs(k.income), rs(k.expense)])) }));
+        table: () => simpleTable(["Cost Centre", "Income", "Spending"], kids.map(k => [k.c.name, rs(k.income), rs(k.expense)])) }));
       root.append(g);
     }
-    root.append(h("p", { class: "hint" }, "'Surplus' here is simple cash-style income less spending for the activity. It does not include the value of animals, trees, home use of produce, or family labour."));
+    root.append(h("p", { class: "hint" }, "'Surplus' here is simple income less spending for the cost centre."));
     sc.replaceChildren(root); const f = $("tbody tr", root); f && f.focus(); HL.setKeys([BACK, printKey]);
   },
 };
 HL.screens.activity = {
-  title: "Activity",
+  title: "Cost Centre",
   async render(sc, params) {
     await loadMasters();
     const P = getPeriod(), r = await HL.get("/api/activity", { from: P.from, to: P.to, cc_id: params.cc_id });
@@ -283,15 +283,15 @@ HL.screens.search = {
     const item = h("input", { type: "text", list: "dl-s-items", value: params.item || "", "aria-label": "Item" });
     const dl = h("datalist", { id: "dl-s-items" }, M().items.map(i => h("option", { value: i.item })));
     const led = picker({ options: () => ledgerOptions({ includeInactive: true }), value: params.ledger_id, placeholder: "Any account" });
-    const cc = picker({ options: () => ccOptions(false), value: params.cc_id, placeholder: "Any activity" });
-    const vt = h("select", { "aria-label": "Voucher type" }, h("option", { value: "" }, "Any type"), ["Payment", "Receipt", "Contra", "Journal", "Sales", "Purchase"].map(x => h("option", { value: x }, x)));
+    const cc = picker({ options: () => ccOptions(false), value: params.cc_id, placeholder: "Any cost centre" });
+    const vt = h("select", { "aria-label": "Voucher type" }, h("option", { value: "" }, "Any type"), ["Payment", "Receipt", "Contra", "Journal", "Sales", "Purchase", "Credit Note", "Debit Note"].map(x => h("option", { value: x }, x)));
     const amin = h("input", { type: "text", inputmode: "decimal", placeholder: "from ₹", "aria-label": "Minimum amount" }), amax = h("input", { type: "text", inputmode: "decimal", placeholder: "to ₹", "aria-label": "Maximum amount" });
     const all = h("input", { type: "checkbox" });
     const out = h("div", {});
     const root = h("div", {}, h("h1", { class: "title" }, "Search" + (params.name ? " · " + params.name : "")), h("p", { class: "sub" }, "Find any entry by words, date, account, activity, item or amount. Leave boxes empty to ignore them."), h("div", { class: "panel", style: "padding:.8rem" },
       h("div", { class: "fgrid" },
         h("label", { class: "f", style: "grid-column:1/-1" }, "Words", q), h("label", { class: "f" }, "From date", f), h("label", { class: "f" }, "To date", t),
-        h("label", { class: "f" }, "Account", led.el), h("label", { class: "f" }, "Activity", cc.el), h("label", { class: "f" }, "Item", item), h("label", { class: "f" }, "Voucher type", vt),
+        h("label", { class: "f" }, "Account", led.el), h("label", { class: "f" }, "Cost Centre", cc.el), h("label", { class: "f" }, "Item", item), h("label", { class: "f" }, "Voucher type", vt),
         h("label", { class: "f" }, "Amount between", h("span", { class: "row", style: "gap:.3rem;flex-wrap:nowrap" }, amin, amax))),
       h("div", { class: "row", style: "margin-top:.7rem" }, h("button", { class: "btn primary", type: "button", onclick: () => run() }, "Search"), h("button", { class: "btn", type: "button", onclick: () => { HL.go("search", {}, { replace: true }); } }, "Clear"),
         h("label", { class: "muted" }, all, " Include the Cash/Bank side of each entry"))), dl, out);
@@ -304,7 +304,7 @@ HL.screens.search = {
         if (t.value.trim()) { a.to = parseDateInput(t.value); if (!a.to) throw new Error("To date is not valid."); }
         Object.assign(a, { q: q.value, item: item.value, ledger_id: led.value, cc_id: cc.value, vtype: vt.value, amin: amin.value, amax: amax.value, scope: all.checked ? "all" : "main" });
         const r = await HL.get("/api/search", a);
-        const tbl = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, ["Date", "Account", "Item", "Activity", "Type", "No.", "Debit", "Credit"].map((x, i) => h("th", { class: i > 5 ? "r" : "" }, x)))));
+        const tbl = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, ["Date", "Account", "Item", "Cost Centre", "Type", "No.", "Debit", "Credit"].map((x, i) => h("th", { class: i > 5 ? "r" : "" }, x)))));
         const tb = h("tbody", {}); tbl.append(tb); const trs = [];
         r.rows.forEach(x => { const tr = h("tr", { class: "row", tabindex: "0", title: x.narration, onclick: () => HL.go("voucher", { id: x.vid }) },
           h("td", {}, showDate(x.vdate)), h("td", {}, x.ledger, x.narration ? h("div", { class: "muted", style: "font-size:.85em" }, x.narration) : ""), h("td", {}, x.item ? x.item + (x.qty_milli ? " × " + qtyStr(x.qty_milli) + " " + (x.unit || "") : "") : ""), h("td", {}, x.cc || ""), h("td", {}, x.vtype), h("td", {}, x.number),
@@ -317,7 +317,7 @@ HL.screens.search = {
       } catch (e) { fail(e); }
     }
     HL.onKey = e => { if (e.key === "Enter" && e.ctrlKey) { run(); return true; } };
-    HL.setKeys([{ k: "Enter", label: "Search", fn: run }, BACK, { k: "", label: "Export results (CSV)", fn: () => { const tr = $$("tbody tr.row", out); exportCsv("search.csv", ["Date", "Account", "Item", "Activity", "Type", "No", "Debit", "Credit"], tr.map(r => $$("td", r).map(c => c.firstChild ? c.firstChild.textContent : ""))); } }, printKey]);
+    HL.setKeys([{ k: "Enter", label: "Search", fn: run }, BACK, { k: "", label: "Export results (CSV)", fn: () => { const tr = $$("tbody tr.row", out); exportCsv("search.csv", ["Date", "Account", "Item", "Cost Centre", "Type", "No", "Debit", "Credit"], tr.map(r => $$("td", r).map(c => c.firstChild ? c.firstChild.textContent : ""))); } }, printKey]);
     if (params.q || params.item || params.ledger_id || params.cc_id || params.from) run(); else q.focus();
   },
 };

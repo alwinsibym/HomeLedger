@@ -3,10 +3,13 @@ import datetime as dt, random, sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from homeledger import db, service as sv, config
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'tests'))
+import fixtures
 
 def main():
     db.init_database(config.db_path())
     c = db.connect(config.db_path())
+    fixtures.install(c)
     m = sv.list_masters(c, "2026-11-19")
     L = {l["name"]: l["id"] for l in m["ledgers"]}
     sv.set_openings(c, [

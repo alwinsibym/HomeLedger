@@ -11,19 +11,19 @@ HL.gotoItems = function () {
   add("Trial Balance", "", () => HL.go("tb"));
   add("Profit & Loss", "Income less spending", () => HL.go("pnl"));
   add("Balance Sheet", "What you own and owe", () => HL.go("bs"));
-  add("Farm & Household Activities", "Rubber, cattle, crops...", () => HL.go("activities"));
-  add("Commodities (Items)", "Fertilizer, milk, rubber...", () => HL.go("commodities"));
-  add("Masters", "Ledgers, groups, activities", () => HL.go("masters"));
+  add("Cost Centres", "Income and spending by cost centre", () => HL.go("activities"));
+  add("Item-wise Report", "By item name", () => HL.go("commodities"));
+  add("Masters", "Ledgers, groups, cost centres", () => HL.go("masters"));
   add("Opening Balances", "Start-up cash, bank, loans", () => HL.go("openings"));
   add("Company Info", "Name and books beginning date", () => HL.go("company"));
   [["backup", "Backup & Restore"], ["health", "Health Check"], ["export", "Export to Excel"], ["settings", "Settings (text size, look)"], ["security", "Security (sign-in)"], ["audit", "Audit Trail"]]
     .forEach(([k, l]) => add(l, "Utilities", () => HL.go("utilities", { tab: k })));
-  [["Payment", "F5"], ["Receipt", "F6"], ["Contra", "F4"], ["Journal", "F7"], ["Sales", "F8"], ["Purchase", "F9"]]
+  [["Payment", "F5"], ["Receipt", "F6"], ["Contra", "F4"], ["Journal", "F7"], ["Sales", "F8"], ["Purchase", "F9"], ["Credit Note", "Ctrl+F8"], ["Debit Note", "Ctrl+F9"]]
     .forEach(([v, k]) => add(v + " Voucher", "New entry (" + k + ")", () => HL.go("voucher", { vtype: v }), "Voucher"));
   const m = HL.S.masters;
   if (m) {
     m.ledgers.filter(l => l.is_active).forEach(l => add(l.name, "Ledger · " + l.group_name, () => HL.go("ledger", { ledger_id: l.id }), "Ledger"));
-    m.cost_centres.filter(c => c.is_active).forEach(c => add(c.name, "Activity", () => HL.go("activity", { cc_id: c.id }), "Activity"));
+    m.cost_centres.filter(c => c.is_active).forEach(c => add(c.name, "Cost Centre", () => HL.go("activity", { cc_id: c.id }), "Activity"));
   }
   add("Lock", "Sign out until the password is typed", () => HL.lockNow());
   add("Quit", "Close HomeLedger", () => HL.quit());
@@ -65,7 +65,7 @@ HL.openGoTo = function () {
 
 HL.openHelp = function () {
   const rows = [["F5 / F6 / F4 / F7", "Payment / Receipt / Contra / Journal"], ["F8 / F9", "Sales / Purchase"], ["Alt+G", "Go To: jump to any screen, ledger or activity"], ["Ctrl+F", "Search entries"], ["Alt+F1", "Dashboard"],
-    ["F3 / Alt+K", "Company info"], ["Alt+Y", "Data: backup, health check, security"], ["Alt+E", "Export everything to Excel"], ["Ctrl+P / Alt+P", "Print this screen"], ["Ctrl+L / Alt+L", "Lock (when sign-in is on)"],
+    ["F3 / Alt+K", "Company info"], ["Ctrl+F8 / Ctrl+F9", "Credit Note / Debit Note"], ["Alt+Y", "Data: backup, health check, security"], ["Alt+E", "Export everything to Excel"], ["Ctrl+P / Alt+P", "Print this screen"], ["Ctrl+L / Alt+L", "Lock (when sign-in is on)"],
     ["Enter", "Accept and go to the next field"], ["Esc", "Go back"], ["Ctrl+A", "Accept (save) a voucher"]];
   modal({ title: "Keys and help", wide: true, body: h("div", {}, h("table", { class: "tbl" }, h("tbody", {}, rows.map(([k, d]) => h("tr", {}, h("td", { style: "white-space:nowrap" }, h("b", {}, k)), h("td", {}, d))))),
     h("p", { class: "hint" }, "HomeLedger works only on this computer and does not use the internet. Your data is saved after every entry and backed up automatically.")), buttons: [{ label: "Close", cls: "primary" }] });

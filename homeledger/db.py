@@ -9,7 +9,7 @@ from pathlib import Path
 
 from .errors import CorruptDatabase, UserError
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 SCHEMA_V2 = """
 CREATE TABLE IF NOT EXISTS users (
@@ -70,14 +70,14 @@ CREATE TABLE ledgers (
 
 CREATE TABLE vouchers (
     id INTEGER PRIMARY KEY,
-    vtype TEXT NOT NULL CHECK (vtype IN ('Payment','Receipt','Contra','Journal','Sales','Purchase')),
+    vtype TEXT NOT NULL,
     fy TEXT NOT NULL,
     number INTEGER NOT NULL,
     vdate TEXT NOT NULL,
     narration TEXT NOT NULL DEFAULT '',
     ref TEXT NOT NULL DEFAULT '',
     date_approx INTEGER NOT NULL DEFAULT 0,
-    status TEXT NOT NULL DEFAULT 'posted' CHECK (status IN ('posted','cancelled')),
+    status TEXT NOT NULL DEFAULT 'posted' CHECK (status IN ('posted','cancelled','memo','optional')),
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     UNIQUE (vtype, fy, number)
@@ -123,132 +123,132 @@ CREATE INDEX idx_audit_entity ON audit_log(entity, entity_id);
 
 # ---- starter chart of accounts ------------------------------------------------
 # (code, name, parent_code, nature)
+# Tally's own starting groups (name, parent, nature). Group codes are used internally.
 GROUPS = [
-    ("CURRENT_ASSETS", "Current Assets", None, "asset"),
-    ("CASH", "Cash-in-Hand", "CURRENT_ASSETS", "asset"),
-    ("BANK", "Bank Accounts", "CURRENT_ASSETS", "asset"),
-    ("DEBTORS", "Sundry Debtors", "CURRENT_ASSETS", "asset"),
-    ("LOANS_ADV", "Loans & Advances (Asset)", "CURRENT_ASSETS", "asset"),
-    ("DEPOSITS", "Deposits (Asset)", "CURRENT_ASSETS", "asset"),
-    ("INVEST", "Investments", None, "asset"),
-    ("FIXED", "Fixed Assets", None, "asset"),
-    ("LIVESTOCK", "Livestock", "FIXED", "asset"),
+    ("BRANCH", "Branch / Divisions", None, "liability"),
     ("CAPITAL", "Capital Account", None, "liability"),
-    ("LOANS_LIAB", "Loans (Liability)", None, "liability"),
+    ("RESERVES", "Reserves & Surplus", "CAPITAL", "liability"),
+    ("CURRENT_ASSETS", "Current Assets", None, "asset"),
+    ("BANK", "Bank Accounts", "CURRENT_ASSETS", "asset"),
+    ("CASH", "Cash-in-Hand", "CURRENT_ASSETS", "asset"),
+    ("DEPOSITS", "Deposits (Asset)", "CURRENT_ASSETS", "asset"),
+    ("LOANS_ADV", "Loans & Advances (Asset)", "CURRENT_ASSETS", "asset"),
+    ("STOCK", "Stock-in-Hand", "CURRENT_ASSETS", "asset"),
+    ("DEBTORS", "Sundry Debtors", "CURRENT_ASSETS", "asset"),
     ("CURRENT_LIAB", "Current Liabilities", None, "liability"),
+    ("DUTIES", "Duties & Taxes", "CURRENT_LIAB", "liability"),
+    ("PROVISIONS", "Provisions", "CURRENT_LIAB", "liability"),
     ("CREDITORS", "Sundry Creditors", "CURRENT_LIAB", "liability"),
-    ("SALES", "Sales Accounts", None, "income"),
-    ("DIRECT_INC", "Direct Incomes", None, "income"),
-    ("INDIRECT_INC", "Indirect Incomes", None, "income"),
-    ("PURCHASE", "Purchase Accounts", None, "expense"),
     ("DIRECT_EXP", "Direct Expenses", None, "expense"),
-    ("FARM_EXP", "Farm Expenses", "DIRECT_EXP", "expense"),
+    ("DIRECT_INC", "Direct Incomes", None, "income"),
+    ("FIXED", "Fixed Assets", None, "asset"),
     ("INDIRECT_EXP", "Indirect Expenses", None, "expense"),
-    ("HOUSE_EXP", "Household Expenses", "INDIRECT_EXP", "expense"),
+    ("INDIRECT_INC", "Indirect Incomes", None, "income"),
+    ("INVEST", "Investments", None, "asset"),
+    ("LOANS_LIAB", "Loans (Liability)", None, "liability"),
+    ("BANK_OD", "Bank OD A/c", "LOANS_LIAB", "liability"),
+    ("SECURED", "Secured Loans", "LOANS_LIAB", "liability"),
+    ("UNSECURED", "Unsecured Loans", "LOANS_LIAB", "liability"),
+    ("MISC_EXP", "Misc. Expenses (ASSET)", None, "asset"),
+    ("PURCHASE", "Purchase Accounts", None, "expense"),
+    ("SALES", "Sales Accounts", None, "income"),
+    ("SUSPENSE", "Suspense A/c", None, "liability"),
 ]
 
-# Activities (cost centres): (name, parent, kind)
-COST_CENTRES = [
-    ("Household", None, "household"),
-    ("Dog", "Household", "household"),
-    ("Farm", None, "farm"),
-    ("Rubber", "Farm", "farm"),
-    ("Cattle", "Farm", "farm"),
-    ("Goats", "Farm", "farm"),
-    ("Coffee", "Farm", "farm"),
-    ("Cocoa", "Farm", "farm"),
-    ("Black Pepper", "Farm", "farm"),
-    ("Nutmeg", "Farm", "farm"),
-    ("Banana", "Farm", "farm"),
-    ("Mango", "Farm", "farm"),
-    ("Jackfruit", "Farm", "farm"),
-    ("Guava", "Farm", "farm"),
-    ("Rambutan", "Farm", "farm"),
-    ("Other Fruits", "Farm", "farm"),
-    ("Timber Trees", "Farm", "farm"),
-]
+# Like Tally, a new book starts with just Cash and no cost centres. Everything else is created by the user.
+COST_CENTRES = []
+LEDGERS = [("Cash", "CASH", None)]
 
-# Ledgers: (name, group_code, default activity)
-LEDGERS = [
-    ("Cash", "CASH", None),
-    ("Bank Account", "BANK", None),
-    # household expenses
-    ("Groceries & Provisions", "HOUSE_EXP", "Household"),
-    ("Vegetables & Fruits", "HOUSE_EXP", "Household"),
-    ("Milk & Dairy", "HOUSE_EXP", "Household"),
-    ("Meat & Fish", "HOUSE_EXP", "Household"),
-    ("Electricity Bill (House)", "HOUSE_EXP", "Household"),
-    ("Water Bill", "HOUSE_EXP", "Household"),
-    ("Gas Cylinder (LPG)", "HOUSE_EXP", "Household"),
-    ("Phone & Internet", "HOUSE_EXP", "Household"),
-    ("Vehicle Fuel (Household)", "HOUSE_EXP", "Household"),
-    ("Vehicle Repairs & Service", "HOUSE_EXP", "Household"),
-    ("Medical & Medicines", "HOUSE_EXP", "Household"),
-    ("Education & Fees", "HOUSE_EXP", "Household"),
-    ("Clothing & Footwear", "HOUSE_EXP", "Household"),
-    ("House Repairs & Maintenance", "HOUSE_EXP", "Household"),
-    ("Festivals & Functions", "HOUSE_EXP", "Household"),
-    ("Travel", "HOUSE_EXP", "Household"),
-    ("Gifts & Donations", "HOUSE_EXP", "Household"),
-    ("Insurance Premiums", "HOUSE_EXP", "Household"),
-    ("Entertainment", "HOUSE_EXP", "Household"),
-    ("Domestic Help", "HOUSE_EXP", "Household"),
-    ("Taxes & Government Fees", "HOUSE_EXP", "Household"),
-    ("Loan Interest Paid", "HOUSE_EXP", "Household"),
-    ("Dog Expenses", "HOUSE_EXP", "Dog"),
-    ("Household Miscellaneous", "HOUSE_EXP", "Household"),
-    # farm expenses
-    ("Labour Wages", "FARM_EXP", "Farm"),
-    ("Fertilizer & Manure", "FARM_EXP", "Farm"),
-    ("Pesticides & Crop Protection", "FARM_EXP", "Farm"),
-    ("Seeds & Saplings", "FARM_EXP", "Farm"),
-    ("Cattle Feed", "FARM_EXP", "Cattle"),
-    ("Goat Feed", "FARM_EXP", "Goats"),
-    ("Veterinary & Medicines", "FARM_EXP", "Farm"),
-    ("Farm Tools (Small)", "FARM_EXP", "Farm"),
-    ("Farm Fuel", "FARM_EXP", "Farm"),
-    ("Farm Electricity", "FARM_EXP", "Farm"),
-    ("Irrigation & Pump Repairs", "FARM_EXP", "Farm"),
-    ("Farm Repairs & Maintenance", "FARM_EXP", "Farm"),
-    ("Fencing", "FARM_EXP", "Farm"),
-    ("Transport & Freight", "FARM_EXP", "Farm"),
-    ("Rubber Tapping & Processing", "FARM_EXP", "Rubber"),
-    ("Farm Miscellaneous", "FARM_EXP", "Farm"),
-    # farm sales / income
-    ("Rubber Sales", "SALES", "Rubber"),
-    ("Coffee Sales", "SALES", "Coffee"),
-    ("Cocoa Sales", "SALES", "Cocoa"),
-    ("Pepper Sales", "SALES", "Black Pepper"),
-    ("Nutmeg Sales", "SALES", "Nutmeg"),
-    ("Fruit Sales", "SALES", "Other Fruits"),
-    ("Milk Sales", "SALES", "Cattle"),
-    ("Cattle Sales", "SALES", "Cattle"),
-    ("Goat Sales", "SALES", "Goats"),
-    ("Timber Sales", "SALES", "Timber Trees"),
-    ("Other Farm Sales", "SALES", "Farm"),
-    # household income
-    ("Salary / Pension", "INDIRECT_INC", "Household"),
-    ("Interest Received", "INDIRECT_INC", "Household"),
-    ("Rent Received", "INDIRECT_INC", "Household"),
-    ("Gifts Received", "INDIRECT_INC", "Household"),
-    ("Other Income", "INDIRECT_INC", "Household"),
-    # assets
-    ("House & Property", "FIXED", None),
-    ("Farm Land", "FIXED", "Farm"),
-    ("Vehicles", "FIXED", None),
-    ("Farm Equipment & Machinery", "FIXED", "Farm"),
-    ("Cattle Stock", "LIVESTOCK", "Cattle"),
-    ("Goat Stock", "LIVESTOCK", "Goats"),
-    ("Fixed Deposits", "INVEST", None),
-    ("Chit Funds & Savings Schemes", "INVEST", None),
-    ("Gold & Jewellery", "INVEST", None),
-    ("Advances Paid", "LOANS_ADV", None),
-    ("Deposits (Electricity, Gas etc.)", "DEPOSITS", None),
-    # liabilities
-    ("Capital Account", "CAPITAL", None),
-    ("Bank Loan", "LOANS_LIAB", None),
-    ("Money Borrowed", "LOANS_LIAB", None),
-]
+# What older versions created for a household + farm book (used only to tidy up unused leftovers when upgrading)
+_LEGACY_LEDGERS = ['Bank Account',
+ 'Groceries & Provisions',
+ 'Vegetables & Fruits',
+ 'Milk & Dairy',
+ 'Meat & Fish',
+ 'Electricity Bill (House)',
+ 'Water Bill',
+ 'Gas Cylinder (LPG)',
+ 'Phone & Internet',
+ 'Vehicle Fuel (Household)',
+ 'Vehicle Repairs & Service',
+ 'Medical & Medicines',
+ 'Education & Fees',
+ 'Clothing & Footwear',
+ 'House Repairs & Maintenance',
+ 'Festivals & Functions',
+ 'Travel',
+ 'Gifts & Donations',
+ 'Insurance Premiums',
+ 'Entertainment',
+ 'Domestic Help',
+ 'Taxes & Government Fees',
+ 'Loan Interest Paid',
+ 'Dog Expenses',
+ 'Household Miscellaneous',
+ 'Labour Wages',
+ 'Fertilizer & Manure',
+ 'Pesticides & Crop Protection',
+ 'Seeds & Saplings',
+ 'Cattle Feed',
+ 'Goat Feed',
+ 'Veterinary & Medicines',
+ 'Farm Tools (Small)',
+ 'Farm Fuel',
+ 'Farm Electricity',
+ 'Irrigation & Pump Repairs',
+ 'Farm Repairs & Maintenance',
+ 'Fencing',
+ 'Transport & Freight',
+ 'Rubber Tapping & Processing',
+ 'Farm Miscellaneous',
+ 'Rubber Sales',
+ 'Coffee Sales',
+ 'Cocoa Sales',
+ 'Pepper Sales',
+ 'Nutmeg Sales',
+ 'Fruit Sales',
+ 'Milk Sales',
+ 'Cattle Sales',
+ 'Goat Sales',
+ 'Timber Sales',
+ 'Other Farm Sales',
+ 'Salary / Pension',
+ 'Interest Received',
+ 'Rent Received',
+ 'Gifts Received',
+ 'Other Income',
+ 'House & Property',
+ 'Farm Land',
+ 'Vehicles',
+ 'Farm Equipment & Machinery',
+ 'Cattle Stock',
+ 'Goat Stock',
+ 'Fixed Deposits',
+ 'Chit Funds & Savings Schemes',
+ 'Gold & Jewellery',
+ 'Advances Paid',
+ 'Deposits (Electricity, Gas etc.)',
+ 'Capital Account',
+ 'Bank Loan',
+ 'Money Borrowed']
+_LEGACY_CCS = ['Household',
+ 'Dog',
+ 'Farm',
+ 'Rubber',
+ 'Cattle',
+ 'Goats',
+ 'Coffee',
+ 'Cocoa',
+ 'Black Pepper',
+ 'Nutmeg',
+ 'Banana',
+ 'Mango',
+ 'Jackfruit',
+ 'Guava',
+ 'Rambutan',
+ 'Other Fruits',
+ 'Timber Trees']
+_LEGACY_GROUPS = ['FARM_EXP', 'HOUSE_EXP', 'LIVESTOCK']
 
 
 def now_iso() -> str:
@@ -304,7 +304,7 @@ def _seed(conn: sqlite3.Connection, today: dt.date) -> None:
     books_begin = dt.date(fy_start_year - 1, 4, 1).isoformat()
     conn.execute(
         "INSERT INTO company(id, name, books_begin, fy_start_month, currency, created_at) VALUES (1,?,?,?,?,?)",
-        ("My Household & Farm", books_begin, 4, "INR", ts),
+        ("My Company", books_begin, 4, "INR", ts),
     )
     ids = {}
     for i, (code, name, parent, nature) in enumerate(GROUPS):
@@ -356,6 +356,63 @@ def _has_tables(path) -> bool:
         c.close()
 
 
+_VOUCHERS_V3 = """
+CREATE TABLE vouchers_new (
+    id INTEGER PRIMARY KEY,
+    vtype TEXT NOT NULL,
+    fy TEXT NOT NULL,
+    number INTEGER NOT NULL,
+    vdate TEXT NOT NULL,
+    narration TEXT NOT NULL DEFAULT '',
+    ref TEXT NOT NULL DEFAULT '',
+    date_approx INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'posted' CHECK (status IN ('posted','cancelled','memo','optional')),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (vtype, fy, number)
+)
+"""
+
+
+def _migrate_v3(conn) -> None:
+    """Version 3: any voucher type can be stored (Credit/Debit Note and more); Tally's standard groups are added;
+    unused starter accounts made for the old household + farm book are tidied away. Entered data is never touched."""
+    conn.execute(_VOUCHERS_V3)
+    conn.execute("INSERT INTO vouchers_new SELECT id, vtype, fy, number, vdate, narration, ref, date_approx, status, "
+                 "created_at, updated_at FROM vouchers")
+    conn.execute("DROP TABLE vouchers")
+    conn.execute("ALTER TABLE vouchers_new RENAME TO vouchers")
+    conn.execute("CREATE INDEX idx_vouchers_date ON vouchers(vdate)")
+    conn.execute("CREATE INDEX idx_vouchers_status_date ON vouchers(status, vdate)")
+    # Tally's standard groups that are missing
+    ids = {r["code"]: r["id"] for r in conn.execute("SELECT id, code FROM acct_groups WHERE code IS NOT NULL")}
+    for i, (code, name, parent, nature) in enumerate(GROUPS):
+        if code in ids or conn.execute("SELECT 1 FROM acct_groups WHERE name=?", (name,)).fetchone():
+            continue
+        cur = conn.execute("INSERT INTO acct_groups(code, name, parent_id, nature, is_system, sort) VALUES (?,?,?,?,1,?)",
+                           (code, name, ids.get(parent), nature, i))
+        ids[code] = cur.lastrowid
+    # unused starter ledgers / cost centres / groups from the old farm-style chart
+    removed = 0
+    for name in _LEGACY_LEDGERS:
+        r = conn.execute("SELECT id, opening_paise FROM ledgers WHERE name=?", (name,)).fetchone()
+        if r and r["opening_paise"] == 0 and not conn.execute("SELECT 1 FROM entries WHERE ledger_id=?", (r["id"],)).fetchone():
+            conn.execute("DELETE FROM ledgers WHERE id=?", (r["id"],))
+            removed += 1
+    for name in reversed(_LEGACY_CCS):                       # children before parents
+        r = conn.execute("SELECT id FROM cost_centres WHERE name=?", (name,)).fetchone()
+        if r and not conn.execute("SELECT 1 FROM entries WHERE cc_id=?", (r["id"],)).fetchone() \
+                and not conn.execute("SELECT 1 FROM ledgers WHERE default_cc_id=?", (r["id"],)).fetchone() \
+                and not conn.execute("SELECT 1 FROM cost_centres WHERE parent_id=?", (r["id"],)).fetchone():
+            conn.execute("DELETE FROM cost_centres WHERE id=?", (r["id"],))
+    for code in _LEGACY_GROUPS:
+        r = conn.execute("SELECT id FROM acct_groups WHERE code=?", (code,)).fetchone()
+        if r and not conn.execute("SELECT 1 FROM ledgers WHERE group_id=?", (r["id"],)).fetchone() \
+                and not conn.execute("SELECT 1 FROM acct_groups WHERE parent_id=?", (r["id"],)).fetchone():
+            conn.execute("DELETE FROM acct_groups WHERE id=?", (r["id"],))
+    audit(conn, "upgrade", "company", 1, f"Tally standard groups added; {removed} unused starter accounts tidied")
+
+
 def init_database(path, log=None) -> None:
     """Create the database on first run, verify it on later runs, and upgrade it when needed."""
     path = Path(path)
@@ -391,9 +448,15 @@ def init_database(path, log=None) -> None:
         shutil.copy2(path, path.with_name(f"homeledger-before-upgrade-{stamp}.db"))
         conn = connect(path)
         try:
+            conn.execute("PRAGMA foreign_keys = OFF")        # needed while a table is rebuilt (turned back on below)
             with write_tx(conn):
                 if ver < 2:
                     conn.execute(SCHEMA_V2)
+                if ver < 3:
+                    _migrate_v3(conn)
+                bad = conn.execute("PRAGMA foreign_key_check").fetchall()
+                if bad:
+                    raise sqlite3.IntegrityError("upgrade check failed")
                 conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         finally:
             conn.close()
