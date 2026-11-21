@@ -337,3 +337,30 @@ HL.screens.ratios = {
     HL.setKeys([BACK]);
   },
 };
+
+
+function outstandingScreen(kind, title) {
+  return {
+    title,
+    async render(sc) {
+      await loadMasters();
+      const P = getPeriod();
+      const r = await HL.get("/api/outstanding", { kind, to: P.to });
+      const t = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, ["Party", "Oldest", "0-30 days", "31-60", "61-90", "Over 90", "Pending"].map((x, i) => h("th", { class: i > 1 ? "r" : "" }, x)))));
+      const tb = h("tbody", {}); t.append(tb);
+      r.rows.forEach(x => {
+        const tr = h("tr", { class: "row", tabindex: "0", onclick: () => HL.go("ledger", { ledger_id: x.ledger_id }) },
+          h("td", {}, x.name + (x.advance ? "  (advance " + rs(x.advance) + ")" : "")), h("td", {}, x.brought_forward ? "Opening" : x.oldest ? showDate(x.oldest) : ""),
+          ...x.buckets.map(b => h("td", { class: "r" }, b ? inr(b) : "")), h("td", { class: "r" }, inr(x.due)));
+        rowKeys(tr); tb.append(tr);
+      });
+      if (!r.rows.length) tb.append(h("tr", {}, h("td", { colspan: 7, class: "empty" }, "Nothing is pending.")));
+      else tb.append(h("tr", { class: "total" }, h("td", {}, "Total"), h("td", {}), ...r.buckets.map(b => h("td", { class: "r" }, inr(b))), h("td", { class: "r" }, inr(r.total))));
+      sc.replaceChildren(h("div", {}, h("h1", { class: "title" }, title), h("p", { class: "sub" }, "As on " + showDate(r.as_on) + " · Enter opens the ledger"), periodBar(() => HL.refresh()), t, h("p", { class: "hint" }, r.note)));
+      HL.setKeys([BACK]);
+      const f = $("tbody tr", sc); f && f.focus();
+    },
+  };
+}
+HL.screens.receivables = outstandingScreen("receivable", "Bills Receivable (Outstanding)");
+HL.screens.payables = outstandingScreen("payable", "Bills Payable (Outstanding)");

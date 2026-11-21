@@ -223,6 +223,22 @@ class TestVouchers(Base):
         r2 = {i["name"]: i["value"] for i in rp.ratio_analysis(self.c, "2026-04-01", "2027-03-31")["items"]}
         self.assertEqual(r2["Cash-in-Hand + Bank"], r2["Working Capital"])
 
+    def test_outstanding_fifo(self):
+        d = sv.save_ledger(self.c, {"name": "Ravi Stores", "group_id": self.c.execute("select id from acct_groups where code='DEBTORS'").fetchone()[0]})
+        did = d["id"] if isinstance(d, dict) else d
+        sv.save_voucher(self.c, {"vtype": "Sales", "date": "2026-08-01", "lines": [
+            {"ledger_id": did, "side": "Dr", "amount": "1000"}, {"ledger_id": self.L["Water Bill"], "side": "Cr", "amount": "1000"}]})
+        sv.save_voucher(self.c, {"vtype": "Sales", "date": "2026-11-01", "lines": [
+            {"ledger_id": did, "side": "Dr", "amount": "500"}, {"ledger_id": self.L["Water Bill"], "side": "Cr", "amount": "500"}]})
+        sv.save_voucher(self.c, {"vtype": "Receipt", "date": "2026-11-05", "lines": [
+            {"ledger_id": did, "side": "Cr", "amount": "400"}, {"ledger_id": self.L["Cash"], "side": "Dr", "amount": "400"}]})
+        r = rp.outstanding(self.c, "receivable", "2026-11-20")
+        row = r["rows"][0]
+        self.assertEqual(row["due"], 110000)               # 1500 - 400
+        self.assertEqual(row["buckets"], [50000, 0, 0, 60000])   # oldest settled first: 600 left of the August bill
+        with self.assertRaises(UserError):
+            rp.outstanding(self.c, "x", "2026-11-20")
+
     def test_database_refuses_bad_rows_directly(self):
         v = self.pay("2026-11-10", "Water Bill", 100)
         with self.assertRaises(sqlite3.IntegrityError):   # both sides on one line

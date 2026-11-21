@@ -684,3 +684,67 @@ def ratio_analysis(conn, frm, to) -> dict:
         {"name": "Net Profit %", "kind": "pct", "value": pct(net, pl["total_income"])},
         {"name": "Expense % of Income", "kind": "pct", "value": pct(pl["total_expense"], pl["total_income"])},
     ], "note": "Stock is not valued in the books, so Gross Profit % ignores opening and closing stock."}
+
+
+def outstanding(conn, kind: str, as_on: str) -> dict:
+    """Receivables (Sundry Debtors) or Payables (Sundry Creditors) with ageing.
+    Settlements are matched to the oldest open amounts first (FIFO), because entries are not tagged bill by bill."""
+    if kind not in ("receivable", "payable"):
+        raise UserError("Choose receivables or payables.")
+    as_on = parse_iso(as_on)
+    code = "DEBTORS" if kind == "receivable" else "CREDITORS"
+    groups = _groups(conn)
+    kids = {}
+    for g in groups:
+        kids.setdefault(g["parent_id"], []).append(g["id"])
+    ids, stack = set(), [next(g["id"] for g in groups if g["code"] == code)]
+    while stack:
+        i = stack.pop()
+        ids.add(i)
+        stack.extend(kids.get(i, []))
+    asd = dt.date.fromisoformat(as_on)
+    sign = 1 if kind == "receivable" else -1          # +ve = owed (increase), -ve = settled
+    out, total = [], [0, 0, 0, 0]
+    for l in conn.execute("SELECT id, name, group_id, opening_paise, opening_type FROM ledgers ORDER BY name COLLATE NOCASE"):
+        if l["group_id"] not in ids:
+            continue
+        bills = []      # [date, amount]
+        op = l["opening_paise"] if l["opening_type"] == "Dr" else -l["opening_paise"]
+        op *= sign
+        credit_pool = 0
+        if op > 0:
+            bills.append(["0001-01-01", op])
+        else:
+            credit_pool -= op
+        for e in conn.execute(
+                """SELECT v.vdate, e.debit_paise - e.credit_paise AS net FROM entries e
+                   JOIN vouchers v ON v.id=e.voucher_id AND v.status='posted'
+                   WHERE e.ledger_id=? AND v.vdate<=? ORDER BY v.vdate, v.id""", (l["id"], as_on)):
+            amt = e["net"] * sign
+            if amt > 0:
+                bills.append([e["vdate"], amt])
+            else:
+                credit_pool += -amt
+        for b in bills:
+            if credit_pool <= 0:
+                break
+            take = min(b[1], credit_pool)
+            b[1] -= take
+            credit_pool -= take
+        open_bills = [b for b in bills if b[1] > 0]
+        advance = credit_pool    # settled more than owed
+        if not open_bills and not advance:
+            continue
+        buckets = [0, 0, 0, 0]
+        oldest = None
+        for d, a in open_bills:
+            age = (asd - dt.date.fromisoformat(d)).days if d != "0001-01-01" else 9999
+            buckets[0 if age <= 30 else 1 if age <= 60 else 2 if age <= 90 else 3] += a
+            oldest = oldest or d
+        due = sum(buckets)
+        for i in range(4):
+            total[i] += buckets[i]
+        out.append({"ledger_id": l["id"], "name": l["name"], "due": due, "buckets": buckets, "advance": advance,
+                    "oldest": None if oldest in (None, "0001-01-01") else oldest, "brought_forward": oldest == "0001-01-01"})
+    return {"kind": kind, "as_on": as_on, "rows": out, "total": sum(total), "buckets": total,
+            "note": "Matched oldest-first. Opening balances count as the oldest amount."}

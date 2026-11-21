@@ -53,6 +53,8 @@ HL.menus = (() => {
       ["i", "B", "Balance Sheet", "What you own and owe", go("bs")],
       ["i", "P", "Profit & Loss A/c", "Income less spending", go("pnl")],
       ["i", "T", "Trial Balance", "All ledgers", go("tb")],
+      ["i", "O", "Outstandings: Receivable", "Who owes you, with ageing", go("receivables")],
+      ["i", "Y", "Outstandings: Payable", "Whom you owe, with ageing", go("payables")],
       ["i", "A", "Ratio Analysis", "Working capital, current ratio, profit %", go("ratios")]] },
     display: { title: "Display", sub: "More Reports", items: [
       ["h", "Account Books"],
