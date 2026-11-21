@@ -788,3 +788,67 @@ def open_bills(conn, ledger_id: int, exclude_voucher: int = 0) -> list:
         b = m.setdefault(br["ref_name"].lower(), {"ref": br["ref_name"], "due": br["due_date"], "pending": 0})
         b["pending"] += br["amount_paise"] if br["side"] == nat else -br["amount_paise"]
     return [b for b in m.values() if b["pending"] != 0]
+
+
+# =============================================================================
+# Budgets
+# =============================================================================
+def save_budget(conn, d: dict) -> dict:
+    kind = d.get("kind")
+    if kind not in ("ledger", "group"):
+        raise UserError("Choose a ledger or a group for the budget.")
+    tid = int(d.get("target_id") or 0)
+    table = "ledgers" if kind == "ledger" else "acct_groups"
+    if not conn.execute(f"SELECT 1 FROM {table} WHERE id=?", (tid,)).fetchone():
+        raise UserError("That account no longer exists.")
+    fy = _txt(d.get("fy"), 10, "Financial year")
+    if not fy:
+        raise UserError("Please choose the financial year.")
+    amt = parse_amount(d.get("amount"), "Budget amount")
+    with dbm.write_tx(conn):
+        if amt == 0:
+            conn.execute("DELETE FROM budgets WHERE kind=? AND target_id=? AND fy=?", (kind, tid, fy))
+        else:
+            conn.execute("INSERT INTO budgets(kind, target_id, fy, amount_paise) VALUES (?,?,?,?) "
+                         "ON CONFLICT(kind, target_id, fy) DO UPDATE SET amount_paise=excluded.amount_paise", (kind, tid, fy, amt))
+        dbm.audit(conn, "budget", kind, tid, f"{fy}: {amt}")
+    return {"ok": True}
+
+
+def budget_report(conn, frm: str, to: str) -> dict:
+    """Budget against actual for the financial year that contains the period's end date."""
+    from . import reports as rp
+    frm, to = parse_iso(frm), parse_iso(to)
+    fy = fy_label(parse_iso(to), dbm.get_company(conn)["fy_start_month"])
+    rows = rp.ledger_rows(conn, frm, to)
+    groups = rp._groups(conn)
+    kids = {}
+    for g in groups:
+        kids.setdefault(g["parent_id"], []).append(g["id"])
+    out = []
+    for b in conn.execute("SELECT kind, target_id, amount_paise FROM budgets WHERE fy=?", (fy,)):
+        if b["kind"] == "ledger":
+            sel = [r for r in rows if r["id"] == b["target_id"]]
+            name = sel[0]["name"] if sel else "?"
+        else:
+            ids, st = set(), [b["target_id"]]
+            while st:
+                i = st.pop()
+                ids.add(i)
+                st.extend(kids.get(i, []))
+            sel = [r for r in rows if r["group_id"] in ids]
+            name = next((g["name"] for g in groups if g["id"] == b["target_id"]), "?")
+        if not sel:
+            continue
+        nature = sel[0]["nature"]
+        move = sum(r["dr"] - r["cr"] for r in sel)
+        actual = move if nature in ("expense", "asset") else -move
+        out.append({"kind": b["kind"], "target_id": b["target_id"], "name": name + (" (group)" if b["kind"] == "group" else ""),
+                    "budget": b["amount_paise"], "actual": actual, "variance": b["amount_paise"] - actual,
+                    "used_pct": round(actual * 100 / b["amount_paise"]) if b["amount_paise"] else None})
+    out.sort(key=lambda x: x["name"].lower())
+    return {"fy": fy, "from": frm, "to": to, "rows": out}
+
+
+def list_budgets(conn) -> list:
+    return [dict(r) for r in conn.execute("SELECT kind, target_id, fy, amount_paise FROM budgets ORDER BY fy DESC, kind, target_id")]

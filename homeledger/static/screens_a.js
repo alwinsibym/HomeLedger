@@ -68,7 +68,15 @@ HL.menus = (() => {
       ["i", "F", "Cash Flow", "Money in and out by account type", go("cashflow")],
       ["i", "O", "Outstandings: Receivable", "Who owes you, with ageing", go("receivables")],
       ["i", "Y", "Outstandings: Payable", "Whom you owe, with ageing", go("payables")],
-      ["i", "A", "Ratio Analysis", "Working capital, current ratio, profit %", go("ratios")]] },
+      ["i", "A", "Ratio Analysis", "Working capital, current ratio, profit %", go("ratios")],
+      ["i", "M", "More Reports", "Group Summary, Fund Flow, Budgets, Interest, Scenarios", menu("more")]] },
+    more: { title: "More Reports", sub: "Reports", items: [
+      ["i", "G", "Group Summary", "One group at a time, down to the ledgers", go("groupsummary")],
+      ["i", "R", "Receipts & Payments", "All cash and bank movement by account", go("recpay")],
+      ["i", "F", "Fund Flow", "Sources and applications of money", go("fundflow")],
+      ["i", "B", "Budgets", "Budget against actual", go("budgets")],
+      ["i", "I", "Interest Calculation", "Interest on balances over a period", go("interest")],
+      ["i", "S", "Scenarios", "Books as if optional vouchers were real", go("scenario")]] },
     display: { title: "Display", sub: "More Reports", items: [
       ["h", "Account Books"],
       ["i", "L", "Ledger", "Statement of any account", go("ledgers_pick")],

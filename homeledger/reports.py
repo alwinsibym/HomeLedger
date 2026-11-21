@@ -19,7 +19,7 @@ def _period(frm, to):
 # ---------------------------------------------------------------------------
 # core per-ledger numbers
 # ---------------------------------------------------------------------------
-def ledger_rows(conn, frm: str, to: str) -> list:
+def ledger_rows(conn, frm: str, to: str, statuses=("posted",)) -> list:
     """Every ledger with opening / debit / credit / closing for the period.
 
     Real ledgers (assets, liabilities) carry their balance forward.
@@ -35,8 +35,8 @@ def ledger_rows(conn, frm: str, to: str) -> list:
                  COALESCE(SUM(CASE WHEN v.vdate >= ? AND v.vdate <= ? THEN e.credit_paise END), 0) AS cr
                FROM ledgers l
                LEFT JOIN entries e ON e.ledger_id = l.id
-               LEFT JOIN vouchers v ON v.id = e.voucher_id AND v.status = 'posted'
-               GROUP BY l.id""", (frm, frm, to, frm, to)):
+               LEFT JOIN vouchers v ON v.id = e.voucher_id AND v.status IN (%s)
+               GROUP BY l.id""" % ",".join("?" * len(statuses)), (frm, frm, to, frm, to) + tuple(statuses)):
         d = dict(r)
         open_signed = d["opening_paise"] if d["opening_type"] == "Dr" else -d["opening_paise"]
         if d["nature"] in REAL:
@@ -84,9 +84,9 @@ def _groups(conn):
     return [dict(r) for r in conn.execute("SELECT id, code, name, parent_id, nature, sort FROM acct_groups")]
 
 
-def trial_balance(conn, frm, to) -> dict:
+def trial_balance(conn, frm, to, statuses=("posted",)) -> dict:
     frm, to = _period(frm, to)
-    rows = ledger_rows(conn, frm, to)
+    rows = ledger_rows(conn, frm, to, statuses)
     tree = _tree(_groups(conn), rows)
     pl_bf, diff = _synthetics(rows)
     extra = []
@@ -133,9 +133,9 @@ def _prune(node, nature, key):
             "children": kids}
 
 
-def profit_and_loss(conn, frm, to) -> dict:
+def profit_and_loss(conn, frm, to, statuses=("posted",)) -> dict:
     frm, to = _period(frm, to)
-    rows = ledger_rows(conn, frm, to)
+    rows = ledger_rows(conn, frm, to, statuses)
     tree = _tree(_groups(conn), rows)
     exp = [p for p in (_prune(n, "expense", "closing") for n in tree if n["nature"] == "expense") if p]
     inc = [p for p in (_prune(n, "income", "closing") for n in tree if n["nature"] == "income") if p]
@@ -145,10 +145,10 @@ def profit_and_loss(conn, frm, to) -> dict:
             "net": ti - te}
 
 
-def balance_sheet(conn, frm, to) -> dict:
+def balance_sheet(conn, frm, to, statuses=("posted",)) -> dict:
     """Position at the end of the period. 'frm' decides what is 'brought forward' vs 'this period'."""
     frm, to = _period(frm, to)
-    rows = ledger_rows(conn, frm, to)
+    rows = ledger_rows(conn, frm, to, statuses)
     tree = _tree(_groups(conn), rows)
     assets = [p for p in (_prune(n, "asset", "closing") for n in tree if n["nature"] == "asset") if p]
     liabs = [p for p in (_prune(n, "liability", "closing") for n in tree if n["nature"] == "liability") if p]
@@ -893,3 +893,155 @@ def stock_summary(conn, frm, to) -> dict:
     rows.sort(key=lambda x: x["name"].lower())
     return {"from": frm, "to": to, "rows": rows, "total_value": sum(r["close_v"] for r in rows),
             "note": "Closing value is the weighted average cost of what was bought. Sales are not valued here."}
+
+
+
+# ---------------------------------------------------------------------------
+# Group Summary, Receipts & Payments, Fund Flow, Scenarios, Interest, Budgets
+# ---------------------------------------------------------------------------
+def group_summary(conn, frm, to, group_id=None) -> dict:
+    """One level of the chart of accounts: sub-groups and ledgers with opening, debit, credit and closing."""
+    frm, to = _period(frm, to)
+    tree = _tree(_groups(conn), ledger_rows(conn, frm, to))
+
+    def find(nodes, gid):
+        for n in nodes:
+            if n["type"] != "group":
+                continue
+            if n["id"] == gid:
+                return n
+            f = find(n["children"], gid)
+            if f:
+                return f
+        return None
+    if group_id:
+        node = find(tree, int(group_id))
+        if not node:
+            raise UserError("That group no longer exists.")
+        kids, title, parent = node["children"], node["name"], next((g["parent_id"] for g in _groups(conn) if g["id"] == node["id"]), None)
+    else:
+        kids, title, parent = tree, "All groups", None
+    def slim(n):
+        return {k: n[k] for k in ("type", "id", "name", "opening", "dr", "cr", "closing")}
+    items = [slim(n) for n in kids]
+    return {"from": frm, "to": to, "title": title, "group_id": group_id, "parent_id": parent, "items": items,
+            "total": {k: sum(i[k] for i in items) for k in ("opening", "dr", "cr", "closing")}}
+
+
+def receipts_payments(conn, frm, to) -> dict:
+    """Receipts & Payments: every cash and bank movement in the period, by the account on the other side."""
+    frm, to = _period(frm, to)
+    rows = ledger_rows(conn, frm, to)
+    opening = sum(r["opening"] for r in rows if r["cb_kind"])
+    closing = sum(r["closing"] for r in rows if r["cb_kind"])
+    names = {r["id"]: r["name"] for r in rows}
+    rec, pay = {}, {}
+    for vid in [x[0] for x in conn.execute(
+            """SELECT DISTINCT v.id FROM vouchers v JOIN entries e ON e.voucher_id=v.id JOIN ledgers l ON l.id=e.ledger_id
+               WHERE v.status='posted' AND v.vdate BETWEEN ? AND ? AND l.cb_kind IS NOT NULL""", (frm, to))]:
+        ents = [dict(x) for x in conn.execute(
+            "SELECT e.ledger_id, e.debit_paise-e.credit_paise AS net, l.cb_kind FROM entries e JOIN ledgers l ON l.id=e.ledger_id WHERE e.voucher_id=?", (vid,))]
+        if all(e["cb_kind"] for e in ents):
+            continue
+        for e in ents:
+            if e["cb_kind"]:
+                continue
+            if e["net"] < 0:
+                rec[e["ledger_id"]] = rec.get(e["ledger_id"], 0) - e["net"]
+            elif e["net"] > 0:
+                pay[e["ledger_id"]] = pay.get(e["ledger_id"], 0) + e["net"]
+    f = lambda d: sorted(((names[k], v) for k, v in d.items()), key=lambda x: x[0].lower())
+    return {"from": frm, "to": to, "opening": opening, "closing": closing, "receipts": f(rec), "payments": f(pay),
+            "total_receipts": sum(rec.values()), "total_payments": sum(pay.values()),
+            "check": opening + sum(rec.values()) - sum(pay.values()) == closing}
+
+
+def fund_flow(conn, frm, to) -> dict:
+    """Fund Flow: where money came from and where it went, worked out from changes in the balance sheet."""
+    frm, to = _period(frm, to)
+    rows = ledger_rows(conn, frm, to)
+    groups = {g["id"]: g for g in _groups(conn)}
+
+    def top(gid):
+        while groups[gid]["parent_id"]:
+            gid = groups[gid]["parent_id"]
+        return groups[gid]["name"]
+    sources, apps = {}, {}
+    net = sum(r["dr"] - r["cr"] for r in rows if r["nature"] in NOMINAL)     # Dr positive = loss
+    if net < 0:
+        sources["Net profit for the period"] = -net
+    elif net > 0:
+        apps["Net loss for the period"] = net
+    for r in rows:
+        if r["nature"] not in REAL or r["cb_kind"]:
+            continue
+        delta = r["closing"] - r["opening"]            # Dr positive
+        if not delta:
+            continue
+        name = top(r["group_id"])
+        if delta > 0:                                  # more asset or less liability: money used
+            apps[name + (" (increase)" if r["nature"] == "asset" else " (decrease)")] = apps.get(name + (" (increase)" if r["nature"] == "asset" else " (decrease)"), 0) + delta
+        else:                                          # less asset or more liability: money raised
+            k = name + (" (decrease)" if r["nature"] == "asset" else " (increase)")
+            sources[k] = sources.get(k, 0) - delta
+    cb = sum(r["closing"] - r["opening"] for r in rows if r["cb_kind"])
+    ts, ta = sum(sources.values()), sum(apps.values())
+    return {"from": frm, "to": to, "sources": sorted(sources.items()), "applications": sorted(apps.items()),
+            "total_sources": ts, "total_applications": ta, "cash_change": cb, "check": ts - ta == cb}
+
+
+def scenario(conn, frm, to, optional=True, memo=False) -> dict:
+    """What the Profit & Loss and Balance Sheet would look like if optional (and memorandum) vouchers were real."""
+    st = ["posted"] + (["optional"] if optional else []) + (["memo"] if memo else [])
+    base_pl = profit_and_loss(conn, frm, to)
+    pl = profit_and_loss(conn, frm, to, tuple(st))
+    bs = balance_sheet(conn, frm, to, tuple(st))
+    n = conn.execute("SELECT COUNT(*) FROM vouchers WHERE status IN (%s) AND status<>'posted' AND vdate BETWEEN ? AND ?" % ",".join("?" * len(st)),
+                     tuple(st) + (pl["from"], pl["to"])).fetchone()[0]
+    return {"from": pl["from"], "to": pl["to"], "included": st, "vouchers_added": n, "pl": pl, "bs": bs,
+            "actual_net": base_pl["net"], "scenario_net": pl["net"]}
+
+
+def interest(conn, frm, to, rate_bp: int, group_id=None, side="Dr") -> dict:
+    """Simple interest per ledger on its daily balance (Dr balances by default, e.g. money owed to you)."""
+    frm, to = _period(frm, to)
+    if not (0 < rate_bp <= 10000 * 10):
+        raise UserError("Enter an interest rate above 0.")
+    d0, d1 = dt.date.fromisoformat(frm), dt.date.fromisoformat(to)
+    days = (d1 - d0).days + 1
+    groups = _groups(conn)
+    kids = {}
+    for g in groups:
+        kids.setdefault(g["parent_id"], []).append(g["id"])
+    allowed = None
+    if group_id:
+        allowed, st = set(), [int(group_id)]
+        while st:
+            i = st.pop()
+            allowed.add(i)
+            st.extend(kids.get(i, []))
+    rows = ledger_rows(conn, frm, to)
+    out, total = [], 0
+    for r in rows:
+        if r["nature"] not in REAL or r["cb_kind"] or (allowed is not None and r["group_id"] not in allowed):
+            continue
+        ev = {}
+        for e in conn.execute(
+                """SELECT v.vdate, SUM(e.debit_paise - e.credit_paise) AS net FROM entries e JOIN vouchers v ON v.id=e.voucher_id AND v.status='posted'
+                   WHERE e.ledger_id=? AND v.vdate BETWEEN ? AND ? GROUP BY v.vdate""", (r["id"], frm, to)):
+            ev[e["vdate"]] = e["net"]
+        bal, prod = r["opening"], 0                      # prod = sum of daily balances (paise-days)
+        for i in range(days):
+            day = (d0 + dt.timedelta(days=i)).isoformat()
+            bal += ev.get(day, 0)
+            b = bal if side == "Dr" else -bal
+            if b > 0:
+                prod += b
+        if not prod:
+            continue
+        amt = round(prod * rate_bp / 10000 / 365)      # rate in hundredths of a percent, 365-day year
+        total += amt
+        out.append({"ledger_id": r["id"], "name": r["name"], "closing": r["closing"], "avg": round(prod / days), "interest": amt})
+    out.sort(key=lambda x: x["name"].lower())
+    return {"from": frm, "to": to, "days": days, "rate_bp": rate_bp, "side": side, "rows": out, "total": total,
+            "note": "Simple interest on each day's balance, on a 365-day year. Check the rate and basis agreed with the party."}

@@ -302,6 +302,14 @@ def dt_today():
 
 
 GET["/api/openbills"] = _reader(lambda c, q: sv.open_bills(c, _int(q, "ledger_id", True), int(q.get("exclude") or 0)))
+GET["/api/groupsummary"] = _reader(lambda c, q: rp.group_summary(c, q.get("from"), q.get("to"), int(q.get("group_id") or 0) or None))
+GET["/api/recpay"] = _reader(lambda c, q: rp.receipts_payments(c, q.get("from"), q.get("to")))
+GET["/api/fundflow"] = _reader(lambda c, q: rp.fund_flow(c, q.get("from"), q.get("to")))
+GET["/api/scenario"] = _reader(lambda c, q: rp.scenario(c, q.get("from"), q.get("to"), q.get("optional", "1") == "1", q.get("memo") == "1"))
+GET["/api/interest"] = _reader(lambda c, q: rp.interest(c, q.get("from"), q.get("to"), int(round(float(q.get("rate") or 0) * 100)), int(q.get("group_id") or 0) or None, "Cr" if q.get("side") == "Cr" else "Dr"))
+GET["/api/budgetreport"] = _reader(lambda c, q: sv.budget_report(c, q.get("from"), q.get("to")))
+GET["/api/budgets"] = _reader(lambda c, q: sv.list_budgets(c))
+POST["/api/budget/save"] = _writer(lambda c, b: sv.save_budget(c, b))
 GET["/api/postdated"] = _reader(lambda c, q: sv.list_postdated(c))
 GET["/api/chequereg"] = _reader(lambda c, q: sv.cheque_register(c, q.get("from"), q.get("to")))
 GET["/api/classes"] = _reader(lambda c, q: sv.list_classes(c))

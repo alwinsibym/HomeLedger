@@ -327,6 +327,35 @@ class TestVouchers(Base):
                 {"ledger_id": inc, "side": "Dr", "amount": "10", "bills": [{"ref": "X", "kind": "new", "amount": "10"}]},
                 {"ledger_id": self.L["Cash"], "side": "Cr", "amount": "10"}]})
 
+    def test_more_reports(self):
+        self.rec("2026-10-01", "Water Bill", 1000)
+        self.pay("2026-10-05", "Water Bill", 300)
+        f, t = "2026-04-01", "2027-03-31"
+        rp_ = rp.receipts_payments(self.c, f, t)
+        self.assertTrue(rp_["check"])
+        self.assertEqual((rp_["total_receipts"], rp_["total_payments"]), (100000, 30000))
+        ff = rp.fund_flow(self.c, f, t)
+        self.assertTrue(ff["check"])
+        gs = rp.group_summary(self.c, f, t)
+        self.assertTrue(gs["items"])
+        # scenario: an optional voucher shows only when asked for
+        lines = [{"ledger_id": self.L["Water Bill"], "side": "Dr", "amount": "50"}, {"ledger_id": self.L["Cash"], "side": "Cr", "amount": "50"}]
+        sv.save_voucher(self.c, {"vtype": "Payment", "date": "2026-10-06", "status": "optional", "lines": lines})
+        sc = rp.scenario(self.c, f, t, optional=True)
+        self.assertEqual(sc["vouchers_added"], 1)
+        self.assertEqual(sc["actual_net"] - sc["scenario_net"], 5000)
+        # interest: Rs 10,000 owed for 10 days at 12% = 32.88
+        gid = self.c.execute("select id from acct_groups where code='DEBTORS'").fetchone()[0]
+        d = sv.save_ledger(self.c, {"name": "Slow Payer", "group_id": gid}); did = d["id"] if isinstance(d, dict) else d
+        sv.save_voucher(self.c, {"vtype": "Sales", "date": "2026-11-01", "lines": [
+            {"ledger_id": did, "side": "Dr", "amount": "10000"}, {"ledger_id": self.L["Water Bill"], "side": "Cr", "amount": "10000"}]})
+        it = rp.interest(self.c, "2026-11-01", "2026-11-10", 1200, gid)
+        self.assertEqual(it["rows"][0]["interest"], 3288)
+        # budget
+        sv.save_budget(self.c, {"kind": "ledger", "target_id": self.L["Water Bill"], "fy": "2026-27", "amount": "1000"})
+        br = sv.budget_report(self.c, f, t)
+        self.assertEqual(br["rows"][0]["budget"], 100000)
+
     def test_database_refuses_bad_rows_directly(self):
         v = self.pay("2026-11-10", "Water Bill", 100)
         with self.assertRaises(sqlite3.IntegrityError):   # both sides on one line
