@@ -802,3 +802,53 @@ def bank_reconciliation(conn, ledger_id: int, as_on: str) -> dict:
     unc_net = sum(r["dr"] - r["cr"] for r in uncleared)
     return {"ledger_id": led["id"], "name": led["name"], "as_on": as_on, "rows": rows,
             "books": books, "uncleared_net": unc_net, "bank": books - unc_net}
+
+
+def stock_summary(conn, frm, to) -> dict:
+    """Stock Summary: opening, inwards, outwards and closing by item.
+    A debit line carrying a quantity is stock coming in; a credit line is stock going out.
+    Closing value uses the weighted average cost of everything received (opening included)."""
+    frm, to = _period(frm, to)
+    items = {}   # (lower name, unit) -> dict
+
+    def slot(name, unit):
+        k = (name.strip().lower(), unit or "")
+        return items.setdefault(k, {"name": name.strip(), "unit": unit or "", "op_q": 0, "op_v": 0, "in_q": 0, "in_v": 0,
+                                    "out_q": 0, "out_v": 0, "bin_q": 0, "bin_v": 0, "master": False})
+    for m in conn.execute("SELECT name, unit, opening_qty_milli, opening_value_paise FROM stock_items"):
+        s = slot(m["name"], m["unit"])
+        s["master"] = True
+        s["op_q"], s["op_v"] = m["opening_qty_milli"], m["opening_value_paise"]
+    for r in conn.execute(
+            """SELECT trim(e.item) AS item, COALESCE(e.unit,'') AS unit, v.vdate, e.debit_paise AS dr, e.credit_paise AS cr, e.qty_milli AS q
+               FROM entries e JOIN vouchers v ON v.id=e.voucher_id AND v.status='posted' JOIN ledgers l ON l.id=e.ledger_id
+               WHERE e.item IS NOT NULL AND trim(e.item) <> '' AND e.qty_milli > 0 AND l.cb_kind IS NULL AND v.vdate <= ?""", (to,)):
+        s = slot(r["item"], r["unit"])
+        before = r["vdate"] < frm
+        if r["dr"]:
+            if before:
+                s["op_q"] += r["q"]; s["op_v"] += r["dr"]
+            else:
+                s["in_q"] += r["q"]; s["in_v"] += r["dr"]
+            s["bin_q"] += r["q"]; s["bin_v"] += r["dr"]
+        else:
+            if before:
+                s["op_q"] -= r["q"]
+            else:
+                s["out_q"] += r["q"]; s["out_v"] += r["cr"]
+    rows = []
+    for s in items.values():
+        # average cost over everything received: opening (master) + purchases up to the end
+        close_q = s["op_q"] + s["in_q"] - s["out_q"]
+        base = [m for m in conn.execute("SELECT opening_qty_milli q, opening_value_paise v FROM stock_items WHERE lower(name)=?", (s["name"].lower(),))]
+        mq = base[0]["q"] if base else 0
+        mv = base[0]["v"] if base else 0
+        tq, tv = mq + s["bin_q"], mv + s["bin_v"]
+        avg = tv / tq if tq else 0                       # paise per 1.000 unit * 1000 / 1000
+        s["close_q"] = close_q
+        s["close_v"] = round(avg * close_q) if close_q > 0 else 0
+        s["op_v_shown"] = round(avg * s["op_q"]) if s["op_q"] > 0 else 0
+        rows.append(s)
+    rows.sort(key=lambda x: x["name"].lower())
+    return {"from": frm, "to": to, "rows": rows, "total_value": sum(r["close_v"] for r in rows),
+            "note": "Closing value is the weighted average cost of what was bought. Sales are not valued here."}

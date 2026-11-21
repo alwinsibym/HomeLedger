@@ -425,3 +425,51 @@ HL.screens.bankrec = {
     sc.replaceChildren(root); HL.setKeys([BACK]);
   },
 };
+
+
+/* ===================== Stock Items (master) and Stock Summary ===================== */
+HL.screens.stockitems = {
+  title: "Stock Items",
+  async render(sc, params) {
+    const items = await HL.get("/api/stockitems");
+    const root = h("div", {}, h("h1", { class: "title" }, "Stock Items"), h("p", { class: "sub" }, "Things you buy and sell by quantity. In a voucher, type the same name in the Item box, with Qty and Unit."));
+    const t = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, ["Name", "Unit", "Opening qty", "Opening value"].map((x, i) => h("th", { class: i > 1 ? "r" : "" }, x)))));
+    const tb = h("tbody", {}); t.append(tb);
+    const edit = it => {
+      const nm = h("input", { type: "text", value: it ? it.name : "", maxlength: "60", "aria-label": "Name" });
+      const un = h("input", { type: "text", value: it ? it.unit : "", maxlength: "12", "aria-label": "Unit", placeholder: "kg, nos, litre..." });
+      const oq = h("input", { type: "text", inputmode: "decimal", value: it && it.opening_qty_milli ? (it.opening_qty_milli / 1000).toString() : "", "aria-label": "Opening quantity" });
+      const ov = h("input", { type: "text", inputmode: "decimal", value: it && it.opening_value_paise ? (it.opening_value_paise / 100).toFixed(2) : "", "aria-label": "Opening value" });
+      const body = h("div", { class: "fgrid", style: "grid-template-columns:1fr" }, h("label", { class: "f" }, "Name", nm), h("label", { class: "f" }, "Unit", un), h("label", { class: "f" }, "Opening quantity", oq), h("label", { class: "f" }, "Opening value (₹)", ov));
+      const m = modal({ title: it ? "Stock Item Alteration" : "Stock Item Creation", body, buttons: [it ? { label: "Delete", cls: "danger", onclick: async m2 => { if (await confirmBox("Delete stock item?", "Only items never used in a voucher can be deleted.", "Delete", true)) { try { await HL.post("/api/stockitem/delete", { id: it.id }); m2.close(); HL.refresh(); } catch (e) { fail(e); } } } } : null, { label: "Cancel", onclick: m => m.close() }, { label: "Accept", cls: "primary", onclick: save }].filter(Boolean) });
+      enterAsTab(body, save);
+      async function save() { try { await HL.post("/api/stockitem/save", { id: it && it.id, name: nm.value, unit: un.value, opening_qty: oq.value, opening_value: ov.value }); m.close(); HL.refresh(); } catch (e) { fail(e); } }
+    };
+    items.forEach(it => { const tr = h("tr", { class: "row", tabindex: "0", onclick: () => edit(it) }, h("td", {}, it.name), h("td", {}, it.unit), h("td", { class: "r" }, it.opening_qty_milli ? qtyStr(it.opening_qty_milli) : ""), h("td", { class: "r" }, it.opening_value_paise ? inr(it.opening_value_paise) : "")); rowKeys(tr); tb.append(tr); });
+    if (!items.length) tb.append(h("tr", {}, h("td", { colspan: 4, class: "empty" }, "No stock items yet. Press Alt+C to create one.")));
+    root.append(t);
+    sc.replaceChildren(root);
+    HL.setKeys([BACK, { k: "Alt+C", label: "Create stock item", fn: () => edit(null) }]);
+    const f = $("tbody tr.row", root); f && f.focus();
+    if (params.create) { params.create = 0; setTimeout(() => edit(null), 60); }
+  },
+};
+
+HL.screens.stocksummary = {
+  title: "Stock Summary",
+  async render(sc) {
+    await loadMasters();
+    const P = getPeriod();
+    const r = await HL.get("/api/stocksummary", { from: P.from, to: P.to });
+    const q = v => v ? qtyStr(v) : "";
+    const t = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, ["Item", "Unit", "Opening", "Inwards", "Outwards", "Closing qty", "Closing value"].map((x, i) => h("th", { class: i > 1 ? "r" : "" }, x)))));
+    const tb = h("tbody", {}); t.append(tb);
+    r.rows.forEach(x => { const tr = h("tr", { class: "row", tabindex: "0", onclick: () => HL.go("commodity", { item: x.name, unit: x.unit }) }, h("td", {}, x.name), h("td", {}, x.unit),
+      h("td", { class: "r" }, q(x.op_q)), h("td", { class: "r" }, q(x.in_q)), h("td", { class: "r" }, q(x.out_q)), h("td", { class: "r" }, q(x.close_q)), h("td", { class: "r" }, x.close_v ? inr(x.close_v) : "")); rowKeys(tr); tb.append(tr); });
+    if (!r.rows.length) tb.append(h("tr", {}, h("td", { colspan: 7, class: "empty" }, "No stock yet. Create stock items, or type Item, Qty and Unit in a voucher.")));
+    else tb.append(h("tr", { class: "total" }, h("td", {}, "Total"), h("td", {}), h("td", {}), h("td", {}), h("td", {}), h("td", {}), h("td", { class: "r" }, inr(r.total_value))));
+    sc.replaceChildren(h("div", {}, h("h1", { class: "title" }, "Stock Summary"), h("p", { class: "sub" }, periodText() + " · a debit line with a quantity is stock in; a credit line is stock out"), periodBar(() => HL.refresh()), t, h("p", { class: "hint" }, r.note)));
+    HL.setKeys([BACK]);
+    const f = $("tbody tr.row", sc); f && f.focus();
+  },
+};

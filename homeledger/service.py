@@ -556,3 +556,52 @@ def set_bank_date(conn, voucher_id: int, ledger_id: int, bank_date) -> dict:
             conn.execute("DELETE FROM bank_clearing WHERE voucher_id=? AND ledger_id=?", (voucher_id, ledger_id))
         dbm.audit(conn, "bank_date", "voucher", voucher_id, json.dumps({"ledger": ledger_id, "bank_date": bank_date or None}))
     return {"ok": True}
+
+
+# =============================================================================
+# Stock items (inventory masters)
+# =============================================================================
+def list_stock_items(conn) -> list:
+    return [dict(r) for r in conn.execute(
+        "SELECT id, name, unit, opening_qty_milli, opening_value_paise FROM stock_items ORDER BY name COLLATE NOCASE")]
+
+
+def save_stock_item(conn, d: dict) -> dict:
+    sid = d.get("id")
+    name = _txt(d.get("name"), 60, "Item name")
+    if not name:
+        raise UserError("Please enter the item name.")
+    unit = _txt(d.get("unit"), 12, "Unit")
+    qty = parse_qty(d.get("opening_qty")) if str(d.get("opening_qty") or "").strip() else 0
+    val = parse_amount(d.get("opening_value")) if str(d.get("opening_value") or "").strip() else 0
+    if qty < 0 or val < 0:
+        raise UserError("Opening quantity and value cannot be negative.")
+    if val and not qty:
+        raise UserError("An opening value needs an opening quantity.")
+    with dbm.write_tx(conn):
+        dup = conn.execute("SELECT id FROM stock_items WHERE name=? COLLATE NOCASE", (name,)).fetchone()
+        if dup and dup["id"] != sid:
+            raise UserError(f"A stock item named '{name}' already exists.")
+        if sid:
+            if not conn.execute("SELECT 1 FROM stock_items WHERE id=?", (sid,)).fetchone():
+                raise UserError("That stock item no longer exists.")
+            conn.execute("UPDATE stock_items SET name=?, unit=?, opening_qty_milli=?, opening_value_paise=? WHERE id=?",
+                         (name, unit, qty, val, sid))
+            dbm.audit(conn, "alter", "stock_item", sid, name)
+        else:
+            sid = conn.execute("INSERT INTO stock_items(name, unit, opening_qty_milli, opening_value_paise, created_at) VALUES (?,?,?,?,?)",
+                               (name, unit, qty, val, dbm.now_iso())).lastrowid
+            dbm.audit(conn, "create", "stock_item", sid, name)
+    return {"id": sid}
+
+
+def delete_stock_item(conn, sid: int) -> None:
+    with dbm.write_tx(conn):
+        r = conn.execute("SELECT name FROM stock_items WHERE id=?", (sid,)).fetchone()
+        if not r:
+            raise UserError("That stock item no longer exists.")
+        used = conn.execute("SELECT 1 FROM entries WHERE lower(trim(item))=lower(?) LIMIT 1", (r["name"],)).fetchone()
+        if used:
+            raise UserError("This item is used in vouchers, so it cannot be deleted.")
+        conn.execute("DELETE FROM stock_items WHERE id=?", (sid,))
+        dbm.audit(conn, "delete", "stock_item", sid, r["name"])

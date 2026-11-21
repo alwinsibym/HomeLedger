@@ -9,7 +9,7 @@ from pathlib import Path
 
 from .errors import CorruptDatabase, UserError
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 SCHEMA_V4 = """
 CREATE TABLE IF NOT EXISTS bank_clearing (
@@ -17,6 +17,16 @@ CREATE TABLE IF NOT EXISTS bank_clearing (
     ledger_id INTEGER NOT NULL REFERENCES ledgers(id),
     bank_date TEXT NOT NULL,
     PRIMARY KEY (voucher_id, ledger_id)
+)"""
+
+SCHEMA_V5 = """
+CREATE TABLE IF NOT EXISTS stock_items (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    unit TEXT NOT NULL DEFAULT '',
+    opening_qty_milli INTEGER NOT NULL DEFAULT 0 CHECK (opening_qty_milli >= 0),
+    opening_value_paise INTEGER NOT NULL DEFAULT 0 CHECK (opening_value_paise >= 0),
+    created_at TEXT
 )"""
 
 SCHEMA_V2 = """
@@ -351,6 +361,7 @@ def _create_fresh(path, today=None) -> None:
                     conn.execute(stmt)
             conn.execute(SCHEMA_V2)
             conn.execute(SCHEMA_V4)
+            conn.execute(SCHEMA_V5)
             _seed(conn, today or dt.date.today())
             conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     finally:
@@ -465,6 +476,8 @@ def init_database(path, log=None) -> None:
                     _migrate_v3(conn)
                 if ver < 4:
                     conn.execute(SCHEMA_V4)
+                if ver < 5:
+                    conn.execute(SCHEMA_V5)
                 bad = conn.execute("PRAGMA foreign_key_check").fetchall()
                 if bad:
                     raise sqlite3.IntegrityError("upgrade check failed")

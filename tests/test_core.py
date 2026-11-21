@@ -262,6 +262,21 @@ class TestVouchers(Base):
         sv.set_bank_date(self.c, v["id"], bank, "")
         self.assertEqual(rp.bank_reconciliation(self.c, bank, "2026-11-30")["bank"], 0)
 
+    def test_stock_summary(self):
+        sid = sv.save_stock_item(self.c, {"name": "Rice", "unit": "kg", "opening_qty": "100", "opening_value": "2000"})["id"]
+        with self.assertRaises(UserError):
+            sv.save_stock_item(self.c, {"name": "rice", "unit": "kg"})
+        self.pay("2026-11-02", "Water Bill", 1000, item="Rice", qty="50", unit="kg")      # 50 kg in at 1000 (20/kg)
+        sv.save_voucher(self.c, {"vtype": "Receipt", "date": "2026-11-05", "lines": [
+            {"ledger_id": self.L["Water Bill"], "side": "Cr", "amount": "900", "item": "rice", "qty": "30", "unit": "kg"},
+            {"ledger_id": self.L["Cash"], "side": "Dr", "amount": "900"}]})
+        r = rp.stock_summary(self.c, "2026-04-01", "2027-03-31")
+        row = r["rows"][0]
+        self.assertEqual((row["in_q"], row["out_q"], row["close_q"]), (50000, 30000, 120000))
+        self.assertEqual(row["close_v"], 240000)        # 120 kg at average Rs 20
+        with self.assertRaises(UserError):
+            sv.delete_stock_item(self.c, sid)
+
     def test_database_refuses_bad_rows_directly(self):
         v = self.pay("2026-11-10", "Water Bill", 100)
         with self.assertRaises(sqlite3.IntegrityError):   # both sides on one line
