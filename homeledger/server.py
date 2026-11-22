@@ -825,6 +825,43 @@ def r_pr_calc(app, q, b):          # calculates only
         c.close()
 
 
+def _att():
+    from . import attach
+    return attach
+
+
+def _bulk():
+    from . import bulk
+    return bulk
+
+
+GET["/api/attach/list"] = _reader(lambda c, q: _att().listing(c, q.get("voucher_id"), q.get("inbox") == "1"))
+GET["/api/attach/counts"] = _reader(lambda c, q: _att().counts(c))
+GET["/api/attach/file"] = _reader(lambda c, q: _att().get_file(c, q.get("id")))
+POST["/api/attach/upload"] = _writer(lambda c, b: _att().add(c, b))
+POST["/api/attach/link"] = _writer(lambda c, b: _att().link(c, b.get("id"), b.get("voucher_id")))
+POST["/api/attach/delete"] = _writer(lambda c, b: _att().delete(c, b.get("id")))
+GET["/api/bulk/suggest"] = _reader(lambda c, q: dict(zip(("ledger_id", "source"), _bulk().suggest(c, q.get("text") or ""))))
+GET["/api/bulk/rules"] = _reader(lambda c, q: _bulk().rules(c))
+POST["/api/bulk/rule/save"] = _writer(lambda c, b: _bulk().save_rule(c, b))
+POST["/api/bulk/rule/delete"] = _writer(lambda c, b: _bulk().delete_rule(c, b.get("id")))
+POST["/api/bulk/commit"] = _writer(lambda c, b: _bulk().commit(c, b))
+
+
+@route(POST, "/api/bulk/parse")
+def r_bulk_parse(app, q, b):
+    return _bulk().parse_file(b.get("filename") or "", b.get("data") or "")
+
+
+@route(POST, "/api/bulk/preview")
+def r_bulk_preview(app, q, b):
+    c = app.conn()
+    try:
+        return _bulk().preview(c, b)
+    finally:
+        c.close()
+
+
 @route(GET, "/api/tallyxml")
 def r_tally_export(app, q, b):
     from . import utilities as ut
@@ -957,6 +994,9 @@ def make_handler(app: App):
                 return self._json({"error": "Something went wrong inside HomeLedger. Nothing was saved and your "
                                             "existing data is safe. Please try again; if it keeps happening, "
                                             "tell the person who set this up (details are in the log file)."}, 500)
+            if isinstance(res, tuple) and res and res[0] == "bin":
+                return self._send(200, res[2], res[3], {"Content-Disposition": 'inline; filename="%s"' % res[1].replace('"', ""),
+                                                        "Content-Security-Policy": "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'"})
             if isinstance(res, tuple) and res and res[0] in ("zip", "xml"):
                 return self._send(200, res[2], "application/zip" if res[0] == "zip" else "application/xml",
                                   {"Content-Disposition": f'attachment; filename="{res[1]}"'})
@@ -999,7 +1039,8 @@ def make_handler(app: App):
                 n = int(self.headers.get("Content-Length") or 0)
             except ValueError:
                 n = 0
-            if n > 2_000_000:
+            limit = 14_000_000 if self.path.split('?')[0] in ("/api/attach/upload", "/api/bulk/parse") else 2_000_000
+            if n > limit:
                 return self._json({"error": "Request too large."}, 413)
             raw = self.rfile.read(n) if n else b""
             try:

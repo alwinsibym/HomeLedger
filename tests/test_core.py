@@ -760,5 +760,49 @@ class TestPayroll(Base):
         tb = rp.trial_balance(self.c, "2026-04-01", "2027-03-31")
 
 
+class TestBulkAndAttach(Base):
+    def test_attachments(self):
+        import base64
+        from homeledger import attach
+        png = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"x" * 50).decode()
+        v = self.pay("2026-05-05", "Groceries & Provisions", 1000)
+        aid = attach.add(self.c, {"filename": "bill.png", "data": png, "voucher_id": v["id"]})["id"]
+        with self.assertRaises(UserError): attach.add(self.c, {"filename": "again.png", "data": png})        # same file twice
+        with self.assertRaises(UserError): attach.add(self.c, {"filename": "x.exe", "data": base64.b64encode(b"MZ" + b"0" * 30).decode()})
+        self.assertEqual(attach.counts(self.c)[v["id"]], 1)
+        self.assertEqual(attach.get_file(self.c, aid)[3], "image/png")
+        attach.link(self.c, aid, None)
+        self.assertEqual(len(attach.listing(self.c, inbox=True)), 1)
+
+    def test_import_and_rules(self):
+        import base64, io, zipfile
+        from homeledger import bulk
+        csvtxt = "Date,Particulars,Amount,Type\n05-06-2026,Kerala Agro fertiliser,\"1,250.00\",Dr\n06/06/2026,Milk sale,300,Cr\nbad,x,1,Dr\n"
+        pf = bulk.parse_file("n.csv", base64.b64encode(csvtxt.encode()).decode())
+        self.assertEqual(pf["headers"][1], "Particulars")
+        grocer = self.L["Groceries & Provisions"]
+        bulk.save_rule(self.c, {"keyword": "fertiliser", "ledger_id": grocer})
+        pv = bulk.preview(self.c, {"rows": pf["rows"], "map": {"date": 0, "desc": 1, "amount": 2, "type": 3}})
+        self.assertEqual((pv["rows"][0]["amount_paise"], pv["rows"][0]["dir"], pv["rows"][0]["ledger_id"], pv["rows"][0]["source"]), (125000, "out", grocer, "rule"))
+        self.assertEqual(pv["rows"][1]["dir"], "in"); self.assertEqual(pv["problems"], 1)
+        rows = [dict(date=r["date"], dir=r["dir"], amount_paise=r["amount_paise"], ledger_id=r["ledger_id"] or self.L["Rubber Sales"], desc=r["desc"]) for r in pv["rows"] if not r["problem"]]
+        with self.assertRaises(UserError): bulk.commit(self.c, {"bank_ledger_id": grocer, "rows": rows})        # not a cash/bank ledger
+        out = bulk.commit(self.c, {"bank_ledger_id": self.L["Cash"], "rows": rows, "remember": True})
+        self.assertEqual(out["entered"], 2)
+        self.assertTrue(bulk.preview(self.c, {"rows": pf["rows"], "map": {"date": 0, "desc": 1, "amount": 2, "type": 3}})["rows"][0]["duplicate"])
+        # history-based suggestion for a similar later line
+        self.assertEqual(bulk.suggest(self.c, "Milk sale again")[0], self.L["Rubber Sales"])
+        # a small .xlsx
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            z.writestr("xl/sharedStrings.xml", '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><si><t>Date</t></si><si><t>Amount</t></si></sst>')
+            z.writestr("xl/worksheets/sheet1.xml", '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'
+                       '<row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c></row><row r="2"><c r="A2"><v>46000</v></c><c r="B2"><v>99.5</v></c></row></sheetData></worksheet>')
+        x = bulk.parse_file("a.xlsx", base64.b64encode(buf.getvalue()).decode())
+        self.assertEqual(x["headers"], ["Date", "Amount"])
+        self.assertEqual(bulk.clean_date(x["rows"][0][0]), "2025-12-09")
+        self.assertEqual(bulk.clean_amount("(1,000.50)"), (100050, True))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)

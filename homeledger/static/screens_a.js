@@ -68,11 +68,16 @@ HL.menus = (() => {
       ["i", "T", "Receipt Note", "Goods received, stock only", go("voucher", { vtype: "Receipt Note" })],
       ["i", "K", "Stock Journal", "Transfer between godowns, or manufacturing", go("voucher", { vtype: "Stock Journal" })],
       ["h", "Books"],
-      ["i", "B", "Day Book", "All entries day by day", go("daybook")]] },
+      ["i", "B", "Day Book", "All entries day by day", go("daybook")],
+      ["h", "Quick ways to enter"],
+      ["i", "Q", "Quick Entry", "Many payments and receipts, like the notebook", go("quickentry")],
+      ["i", "I", "Bill Inbox", "Photos of bills, entered beside the picture", go("billinbox")]] },
     utilities: { title: "Utilities", items: [
       ["i", "B", "Backup & Restore", "Safe copies of your books", util("backup")],
       ["i", "H", "Health Check", "Verify the data file", util("health")],
       ["i", "E", "Export", "Everything to Excel files", util("export")],
+      ["i", "I", "Import from Excel / CSV", "A typed-up notebook or bank statement", go("bulkimport")],
+      ["i", "R", "Auto-categorise Rules", "Where shops and items belong", go("catrules")],
       ["i", "S", "Settings", "Text size, look", util("settings")],
       ["i", "Y", "Security", "Sign-in and users", util("security")],
       ["i", "A", "Audit Trail", "Who changed what", util("audit")]] },
@@ -482,7 +487,10 @@ HL.screens.voucher = {
     S.tds = v && v.tds ? v.tds : null;
     const tdsBtn = ["Journal", "Payment", "Purchase"].includes(vtype) ? h("button", { class: "btn stop", type: "button", style: "margin:.5rem 0 0 .5rem", title: "Deduct TDS on this payment and add the 'TDS Payable' line",
       onclick: () => mode === "simple" ? say("Switch to double entry (F12 Configure > Entry mode) to deduct TDS.", "err") : HL.tdsDialog({ rows, S, recalc, addRow, vtype, voucherId: v ? v.id : 0, parse }) }, "Add TDS") : "";
-    body.append(tbl, h("div", {}, addBtn, tdsBtn), totalBox, itemsBox || "", metaRow, h("label", { class: "f", style: "margin-top:.6rem" }, "Narration", narr),
+    const attBtn = v ? h("button", { class: "btn", type: "button", style: "margin:.5rem 0 0 .5rem", title: "Photos or PDFs of the bill or receipt",
+      onclick: () => HL.attachDialog(v.id, "Bills and receipts: " + v.vtype + " " + v.number) }, "Bills / receipts" + (HL.attCounts && HL.attCounts[v.id] ? " (" + HL.attCounts[v.id] + ")" : "")) : "";
+    if (v) { try { HL.attCounts = await HL.get("/api/attach/counts"); } catch (e) { HL.attCounts = {}; } }
+    body.append(tbl, h("div", {}, addBtn, tdsBtn, attBtn), totalBox, itemsBox || "", metaRow, h("label", { class: "f", style: "margin-top:.6rem" }, "Narration", narr),
       h("p", { class: "hint" }, "Tip: Enter moves to the next box. After the last amount, Enter adds another line; Enter on the Narration saves (or press Ctrl+A)."));
     if (!isNew) {
       body.append(h("p", { class: "hint" }, "Entered " + v.created_at.slice(0, 16) + (v.updated_at !== v.created_at ? " · last changed " + v.updated_at.slice(0, 16) : "") + (v.status === "cancelled" ? " · CANCELLED" : "")));
