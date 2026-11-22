@@ -9,7 +9,7 @@ from pathlib import Path
 
 from .errors import CorruptDatabase, UserError
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 SCHEMA_V4 = """
 CREATE TABLE IF NOT EXISTS bank_clearing (
@@ -123,6 +123,43 @@ SCHEMA_V9 = (
         qty_milli INTEGER NOT NULL CHECK (qty_milli > 0)
     )""",
 )
+
+
+SCHEMA_V11 = (
+    """CREATE TABLE IF NOT EXISTS gst_party (
+        ledger_id INTEGER PRIMARY KEY REFERENCES ledgers(id) ON DELETE CASCADE,
+        gstin TEXT NOT NULL DEFAULT '',
+        state_code TEXT NOT NULL DEFAULT '',
+        reg_type TEXT NOT NULL DEFAULT 'regular'
+    )""",
+    """CREATE TABLE IF NOT EXISTS gst_item (
+        item_id INTEGER PRIMARY KEY REFERENCES stock_items(id) ON DELETE CASCADE,
+        hsn TEXT NOT NULL DEFAULT '',
+        rate_bp INTEGER NOT NULL DEFAULT 0 CHECK (rate_bp >= 0 AND rate_bp <= 10000)
+    )""",
+    """CREATE TABLE IF NOT EXISTS gst_taxledger (
+        ledger_id INTEGER PRIMARY KEY REFERENCES ledgers(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL CHECK (kind IN ('cgst','sgst','igst','cess'))
+    )""",
+    """CREATE TABLE IF NOT EXISTS gst_lines (
+        id INTEGER PRIMARY KEY,
+        voucher_id INTEGER NOT NULL REFERENCES vouchers(id) ON DELETE CASCADE,
+        party_ledger_id INTEGER REFERENCES ledgers(id),
+        hsn TEXT NOT NULL DEFAULT '',
+        rate_bp INTEGER NOT NULL DEFAULT 0,
+        taxable_paise INTEGER NOT NULL DEFAULT 0,
+        cgst_paise INTEGER NOT NULL DEFAULT 0,
+        sgst_paise INTEGER NOT NULL DEFAULT 0,
+        igst_paise INTEGER NOT NULL DEFAULT 0,
+        pos_state TEXT NOT NULL DEFAULT ''
+    )""",
+    "CREATE INDEX IF NOT EXISTS ix_gst_lines_voucher ON gst_lines(voucher_id)",
+)
+
+
+def apply_v11(conn):
+    for stmt in SCHEMA_V11:
+        conn.execute(stmt)
 
 
 def apply_v10(conn):
@@ -500,6 +537,7 @@ def _create_fresh(path, today=None) -> None:
             apply_v8(conn)
             apply_v9(conn)
             apply_v10(conn)
+            apply_v11(conn)
             _seed(conn, today or dt.date.today())
             conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     finally:
@@ -626,6 +664,8 @@ def init_database(path, log=None) -> None:
                     apply_v9(conn)
                 if ver < 10:
                     apply_v10(conn)
+                if ver < 11:
+                    apply_v11(conn)
                 bad = conn.execute("PRAGMA foreign_key_check").fetchall()
                 if bad:
                     raise sqlite3.IntegrityError("upgrade check failed")

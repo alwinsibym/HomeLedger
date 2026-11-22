@@ -25,7 +25,7 @@ HL.ledgerForm = function ({ id, name, onsaved }) {
     } catch (e) { fail(e); }
   }
   m = modal({ title: L ? "Ledger Alteration" : "Ledger Creation", body, focus: "input",
-    buttons: [{ label: "Cancel (Esc)", onclick: m => m.close() }, { label: "Accept (Ctrl+A)", cls: "primary", onclick: doSave }] });
+    buttons: [L ? { label: "GST details", onclick: () => HL.gstPartyDialog(L) } : null, { label: "Cancel (Esc)", onclick: m => m.close() }, { label: "Accept (Ctrl+A)", cls: "primary", onclick: doSave }].filter(Boolean) });
   m.box.addEventListener("keydown", e => { if (e.ctrlKey && e.key.toLowerCase() === "a") { e.preventDefault(); doSave(); } });
   return m;
 };

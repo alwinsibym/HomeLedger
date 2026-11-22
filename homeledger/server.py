@@ -734,6 +734,30 @@ def r_export(app, q, b):
         c.close()
 
 
+def _gst():
+    from . import gst
+    return gst
+
+
+GET["/api/gst/config"] = _reader(lambda c, q: _gst().get_config(c))
+GET["/api/gst/masters"] = _reader(lambda c, q: _gst().masters(c))
+GET["/api/gst/summary"] = _reader(lambda c, q: _gst().summary(c, parse_iso(q.get("from")), parse_iso(q.get("to"))))
+GET["/api/gst/gstr1"] = _reader(lambda c, q: _gst().gstr1(c, parse_iso(q.get("from")), parse_iso(q.get("to"))))
+GET["/api/gst/missing"] = _reader(lambda c, q: _gst().missing_details(c))
+POST["/api/gst/config/save"] = _writer(lambda c, b: _gst().save_config(c, b))
+POST["/api/gst/party/save"] = _writer(lambda c, b: _gst().save_party(c, b))
+POST["/api/gst/item/save"] = _writer(lambda c, b: _gst().save_item(c, b))
+
+
+@route(POST, "/api/gst/compute")
+def r_gst_compute(app, q, b):          # only calculates; nothing is saved
+    c = app.conn()
+    try:
+        return _gst().compute(c, b.get("vtype"), b.get("party"), b.get("pos") or "", b.get("items") or [])
+    finally:
+        c.close()
+
+
 @route(GET, "/api/tallyxml")
 def r_tally_export(app, q, b):
     from . import utilities as ut

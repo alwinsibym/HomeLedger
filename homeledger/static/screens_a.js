@@ -38,6 +38,7 @@ HL.menus = (() => {
       ["i", "N", "Godowns / Locations", "Where stock is kept", go("godowns")],
       ["i", "X", "Price Lists", "Rates by price level and date", go("prices")],
       ["i", "M", "Bills of Material", "What a product is made from", go("boms")],
+      ["i", "S", "GST Setup", "Registration, state, tax ledgers", go("gstsetup")],
       ["i", "O", "Opening Balances", "Start-up cash, bank, loans", go("openings")],
       ["i", "I", "Company Info", "Name and books beginning date (F3)", go("company")]] },
     m_groups: cad("Groups", "groups"), m_ledgers: cad("Ledgers", "ledgers"), m_cc: cad("Cost Centres", "activities"),
@@ -83,6 +84,8 @@ HL.menus = (() => {
       ["i", "O", "Outstandings: Receivable", "Who owes you, with ageing", go("receivables")],
       ["i", "Y", "Outstandings: Payable", "Whom you owe, with ageing", go("payables")],
       ["i", "A", "Ratio Analysis", "Working capital, current ratio, profit %", go("ratios")],
+      ["i", "H", "GST Summary", "Output tax, input credit, net payable", go("gstsummary")],
+      ["i", "J", "GSTR-1 Lists", "B2B, B2C, credit notes, HSN summary", go("gstr1")],
       ["i", "M", "More Reports", "Group Summary, Fund Flow, Budgets, Interest, Scenarios", menu("more")]] },
     more: { title: "More Reports", sub: "Reports", items: [
       ["i", "G", "Group Summary", "One group at a time, down to the ledgers", go("groupsummary")],
@@ -442,7 +445,28 @@ HL.screens.voucher = {
     if (["Sales", "Purchase", "Credit Note", "Debit Note"].includes(vtype)) {
       await HL.stock.load();
       const fill = h("button", { class: "btn", type: "button", title: "Put the items total on the amount boxes that are still empty", onclick: () => { const tot = itemsTable.total(); if (!tot) return; const amts = rows.filter(r => !r.amt.value); amts.forEach(r => { r.amt.value = (tot / 100).toFixed(2); }); if (amts.length) { recalc(); S.dirty = true; say("Items total put on the empty lines.", "ok"); } } }, "Use items total for the amounts");
-      itemsTable = HL.itemsTable({ vtype, getDate: () => S.date, items: v ? v.items.filter(i => i.kind === "normal") : [], extra: fill, onchange: () => { S.dirty = true; } });
+      S.gst = v && v.gst ? v.gst : null;
+      HL.gstCfg = await HL.get("/api/gst/config"); HL.gstM = HL.gstCfg.on ? await HL.get("/api/gst/masters") : { party: {}, item: {} };
+      const addGst = h("button", { class: "btn", type: "button", title: "Work out CGST / SGST / IGST from the items and add the tax lines", onclick: async () => {
+        try {
+          const cfg = HL.gstCfg, tl = Object.values(cfg.tax_ledgers).map(String);
+          const its = itemsTable.get().map(i => ({ item_id: i.item_id, amount_paise: Math.round((parseFloat(String(i.amount).replace(/,/g, "")) || 0) * 100) }));
+          if (!its.length) { say("Add the stock items (with amounts) first. GST is worked out from them.", "err"); return; }
+          rows.filter(r => tl.includes(String(r.led.value))).forEach(r => { rows.splice(rows.indexOf(r), 1); r.tr.remove(); });
+          const partyRow = rows.find(r => r.led.value && HL.isParty(r.led.value));
+          const res = await HL.post("/api/gst/compute", { vtype, party: partyRow ? partyRow.led.value : null, items: its });
+          const put = (kind, p) => { if (!p) return; const r = addRow({ ledger_id: res.ledgers[kind], side: res.side, amount_paise: p }); r.led.set && r.led.set(res.ledgers[kind]); };
+          put("cgst", res.totals.cgst); put("sgst", res.totals.sgst); put("igst", res.totals.igst);
+          const taxSum = res.totals.cgst + res.totals.sgst + res.totals.igst;
+          const others = rows.filter(r => !tl.includes(String(r.led.value)) && r !== partyRow && r.led.value);
+          if (partyRow) partyRow.amt.value = ((res.totals.taxable + taxSum) / 100).toFixed(2);
+          if (others.length === 1) others[0].amt.value = (res.totals.taxable / 100).toFixed(2);
+          S.gst = { rows: res.rows, pos: res.pos }; S.gstParty = partyRow ? partyRow.led.value : null;
+          recalc(); S.dirty = true;
+          say(`GST added: ${res.intra ? "CGST + SGST" : "IGST"}, tax ${rs(taxSum)}.` + (partyRow ? "" : " Choose the party and press Add GST again to use the party's state.") + (res.warnings.length ? " " + res.warnings[0] : ""), res.warnings.length ? "err" : "ok");
+        } catch (e) { fail(e); } } }, "Add GST");
+      const extra = h("span", { class: "row", style: "gap:.5rem" }, fill, HL.gstCfg.on ? addGst : "");
+      itemsTable = HL.itemsTable({ vtype, getDate: () => S.date, items: v ? v.items.filter(i => i.kind === "normal") : [], extra, onchange: () => { S.dirty = true; } });
       const hasItems = v && v.items.length;
       itemsBox = h("details", { class: "panel", style: "margin-top:.8rem", open: !!hasItems }, h("summary", {}, "Stock items in this " + vtype.toLowerCase() + " (optional)"), itemsTable.el);
     }
@@ -478,7 +502,7 @@ HL.screens.voucher = {
           const t = lines.reduce((s, l) => s + Math.round(parseFloat(l.amount) * 100), 0);
           lines.push({ ledger_id: acct.value, side: vtype === "Receipt" ? "Dr" : "Cr", amount: (t / 100).toFixed(2) });
         }
-        const res = await HL.post("/api/voucher/save", { id: isNew ? undefined : v.id, vtype, date: S.date, narration: narr.value, status: S.status, ref: refInp.value, date_approx: approx.checked, lines, items: itemsTable ? itemsTable.get() : undefined,
+        const res = await HL.post("/api/voucher/save", { id: isNew ? undefined : v.id, vtype, date: S.date, narration: narr.value, status: S.status, ref: refInp.value, date_approx: approx.checked, lines, items: itemsTable ? itemsTable.get() : undefined, gst: itemsTable && HL.gstCfg && HL.gstCfg.on ? S.gst : undefined, gst_party: S.gstParty || (S.gst && lines.find(l => HL.isParty(l.ledger_id)) || {}).ledger_id,
           meta: { inst_no: mNo.value, inst_date: mDt.value.trim() ? (parseDateInput(mDt.value, S.date) || (() => { throw new Error("Please type the cheque date like 15-11-2026."); })()) : null, bank_name: mBk.value, post_dated: mPd.checked, class_name: clsSel.value } });
         S.dirty = false; HL.S.lastVoucherDate = S.date; if (acct && acct.value) HL.S.lastAcct = acct.value;
         say(`${vtype} no. ${res.number} saved (${rs(res.total_paise)}).`, "ok");

@@ -4,6 +4,9 @@ HL.gotoItems = function () {
   const it = [], add = (label, hint, fn, kind) => it.push({ label, hint: hint || "", fn, kind: kind || "Screen" });
   add("Gateway of HomeLedger", "Main menu", () => HL.go("gateway"));
   add("Select Company (F1)", "Open, create, split, merge, year-end close", () => HL.go("companies"));
+  add("GST Setup", "Registration and state", () => HL.go("gstsetup"));
+  add("GST Summary", "Output tax, input credit and net payable", () => HL.go("gstsummary"));
+  add("GSTR-1 Lists", "B2B, B2C, credit notes, HSN summary", () => HL.go("gstr1"));
   add("Dashboard", "Overview and charts", () => HL.go("dashboard"));
   add("Day Book", "All entries day by day", () => HL.go("daybook"));
   add("Search", "Find any entry", () => HL.go("search"));

@@ -668,5 +668,34 @@ class TestRoles(unittest.TestCase):
             c.close()
 
 
+class TestGST(Base):
+    def test_gst_invoice_flow(self):
+        from homeledger import gst, inventory as inv
+        with self.assertRaises(UserError):
+            gst.save_config(self.c, {"on": True, "gstin": "27AAPFU0939F1ZX"})        # bad check letter
+        self.assertTrue(gst.gstin_ok("27AAPFU0939F1ZV"))
+        cfg = gst.save_config(self.c, {"on": True, "state": "32"})
+        self.assertEqual(set(cfg["tax_ledgers"]), {"cgst", "sgst", "igst"})
+        item = inv.save_item(self.c, {"name": "Widget", "unit": "nos"})["id"]
+        gst.save_item(self.c, {"item_id": item, "hsn": "9988", "rate": "18"})
+        party = self.L["Rubber Sales"]      # any ledger works as the party for this test
+        comp = gst.compute(self.c, "Sales", party, "32", [{"item_id": item, "amount_paise": 100000}])
+        self.assertTrue(comp["intra"]); self.assertEqual(comp["rows"][0]["cgst_paise"], 9000); self.assertEqual(comp["rows"][0]["sgst_paise"], 9000)
+        inter = gst.compute(self.c, "Sales", party, "29", [{"item_id": item, "amount_paise": 100000}])
+        self.assertFalse(inter["intra"]); self.assertEqual(inter["rows"][0]["igst_paise"], 18000)
+        tl = cfg["tax_ledgers"]
+        lines = [{"ledger_id": self.L["Cash"], "side": "Dr", "amount": "1180.00"},
+                 {"ledger_id": party, "side": "Cr", "amount": "1000.00"},
+                 {"ledger_id": tl["cgst"], "side": "Cr", "amount": "90.00"}, {"ledger_id": tl["sgst"], "side": "Cr", "amount": "90.00"}]
+        with self.assertRaises(UserError):      # tax lines that do not match the breakup are refused
+            sv.save_voucher(self.c, {"vtype": "Sales", "date": "2026-06-01", "lines": lines, "gst": {"rows": [dict(comp["rows"][0], cgst_paise=8000)], "pos": "32"}, "gst_party": party})
+        v = sv.save_voucher(self.c, {"vtype": "Sales", "date": "2026-06-01", "lines": lines, "gst": {"rows": comp["rows"], "pos": "32"}, "gst_party": party})
+        self.assertEqual(v["gst"]["rows"][0]["taxable_paise"], 100000)
+        s = gst.summary(self.c, "2026-04-01", "2027-03-31")
+        self.assertEqual((s["outward"]["cgst"], s["net_total"]), (9000, 18000))
+        r1 = gst.gstr1(self.c, "2026-04-01", "2027-03-31")
+        self.assertEqual(len(r1["b2c"]), 1); self.assertEqual(r1["hsn"][0]["taxable"], 100000)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)
