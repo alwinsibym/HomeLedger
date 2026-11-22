@@ -292,10 +292,10 @@ async function securityTab(root) {
   if (!owner) return;
   const us = await HL.get("/api/auth/users");
   const t = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, ["User", "Can", ""].map(x => h("th", {}, x))))); const tb = h("tbody", {}); t.append(tb);
-  us.rows.forEach(u => tb.append(h("tr", {}, h("td", {}, u.username), h("td", {}, u.role === "owner" ? "Change everything" : "View only"),
+  us.rows.forEach(u => tb.append(h("tr", {}, h("td", {}, u.username), h("td", {}, ({ owner: "Owner: everything", accountant: "Accountant: entries and masters", entry: "Data entry: vouchers only", viewer: "View only" })[u.role] || u.role),
     h("td", { class: "r" }, u.username.toLowerCase() === A.user.toLowerCase() ? "" : h("button", { class: "btn", onclick: async () => { if (await confirmBox("Remove " + u.username + "?", "They will no longer be able to sign in.", "Yes, remove", true)) { try { await HL.post("/api/auth/user/remove", { id: u.id }); await done("User removed."); } catch (e) { fail(e); } } } }, "Remove")))));
   const nu = h("input", { type: "text", autocomplete: "off", "aria-label": "New user name" }), np = h("input", { type: "password", autocomplete: "new-password", "aria-label": "New user password" });
-  const role = h("select", { "aria-label": "Role" }, h("option", { value: "viewer" }, "View only (cannot change anything)"), h("option", { value: "owner" }, "Owner (can change everything)"));
+  const role = h("select", { "aria-label": "Role" }, h("option", { value: "viewer" }, "View only (cannot change anything)"), h("option", { value: "entry" }, "Data entry (vouchers only)"), h("option", { value: "accountant" }, "Accountant (entries and masters; no security, restore or company changes)"), h("option", { value: "owner" }, "Owner (can change everything)"));
   root.append(h("div", { class: "panel", style: "padding:.9rem;max-width:44rem;margin-bottom:.8rem" }, h("h3", { style: "margin-top:0" }, "Users"), h("div", { class: "scroll" }, t),
     h("h4", {}, "Add a user"), h("div", { class: "fgrid" }, h("label", { class: "f" }, "User name", nu), h("label", { class: "f" }, "Password or PIN", np), h("label", { class: "f" }, "Can", role)),
     h("div", { class: "row", style: "margin-top:.5rem" }, h("button", { class: "btn", onclick: async () => { try { await HL.post("/api/auth/user/add", { username: nu.value, password: np.value, role: role.value }); await done("User added."); } catch (e) { fail(e); } } }, "Add user"))));

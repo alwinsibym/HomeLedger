@@ -513,7 +513,8 @@ HL.screens.voucher = {
         if (!(await confirmBox("Delete this voucher?", "It is removed for good (a copy is kept in the audit log). To keep it in the records, use Cancel instead.", "Yes, delete it", true))) return;
         try { await HL.post("/api/voucher/delete", { id: v.id }); say("Voucher deleted.", "ok"); await loadMasters(); S.dirty = false; HL.back(); } catch (e) { fail(e); }
       };
-      HL.voucherActs = { cancel: toggleCancel, del: doDelete };
+      HL.voucherActs = { cancel: toggleCancel, del: doDelete, print: () => HL.printVoucher(v.id) };
+      keys.push({ k: "Alt+P", label: "Print", fn: () => HL.printVoucher(v.id) });
       keys.push({ k: "Alt+D", label: "Delete", fn: doDelete });
       keys.push({ k: "Alt+X", label: v.status === "cancelled" ? "Restore" : "Cancel", fn: toggleCancel });
       if (v.status === "cancelled") keys[0] = { k: "Ctrl+A", label: "Accept (save)", disabled: true };

@@ -9,7 +9,7 @@ from pathlib import Path
 
 from .errors import CorruptDatabase, UserError
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 SCHEMA_V4 = """
 CREATE TABLE IF NOT EXISTS bank_clearing (
@@ -125,6 +125,18 @@ SCHEMA_V9 = (
 )
 
 
+def apply_v10(conn):
+    """More user roles (accountant, data entry): the users table is rebuilt with a wider CHECK."""
+    sql = conn.execute("SELECT sql FROM sqlite_master WHERE name='users'").fetchone()
+    if not sql or "accountant" in sql[0]:
+        return
+    conn.execute("ALTER TABLE users RENAME TO users_old")
+    conn.execute(SCHEMA_V2)
+    conn.execute("INSERT INTO users(id, username, role, salt, hash, iters, failed, locked_until, created) "
+                 "SELECT id, username, role, salt, hash, iters, failed, locked_until, created FROM users_old")
+    conn.execute("DROP TABLE users_old")
+
+
 def apply_v9(conn):
     cols = {r[1] for r in conn.execute("PRAGMA table_info(stock_items)")}
     for stmt in SCHEMA_V9:
@@ -154,7 +166,7 @@ SCHEMA_V2 = """
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY,
     username TEXT NOT NULL UNIQUE COLLATE NOCASE,
-    role TEXT NOT NULL CHECK (role IN ('owner','viewer')),
+    role TEXT NOT NULL CHECK (role IN ('owner','accountant','entry','viewer')),
     salt BLOB NOT NULL,
     hash BLOB NOT NULL,
     iters INTEGER NOT NULL,
@@ -487,6 +499,7 @@ def _create_fresh(path, today=None) -> None:
             apply_v7(conn)
             apply_v8(conn)
             apply_v9(conn)
+            apply_v10(conn)
             _seed(conn, today or dt.date.today())
             conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     finally:
@@ -611,6 +624,8 @@ def init_database(path, log=None) -> None:
                     apply_v8(conn)
                 if ver < 9:
                     apply_v9(conn)
+                if ver < 10:
+                    apply_v10(conn)
                 bad = conn.execute("PRAGMA foreign_key_check").fetchall()
                 if bad:
                     raise sqlite3.IntegrityError("upgrade check failed")

@@ -643,5 +643,30 @@ class TestUtilities(Base):
             c2.close()
 
 
+class TestRoles(unittest.TestCase):
+    def test_new_roles_and_upgrade(self):
+        from homeledger import auth
+        with tempfile.TemporaryDirectory() as t:
+            p = Path(t) / "r.db"; dbm._create_fresh(p)
+            c = dbm.connect(p)
+            auth.add_user(c, "dad", "secret123", "owner")
+            auth.add_user(c, "clerk", "secret123", "entry")
+            auth.add_user(c, "ca", "secret123", "accountant")
+            self.assertEqual(sorted(u["role"] for u in auth.users(c)), ["accountant", "entry", "owner"])
+            c.close()
+            # an old (v9) users table is widened by the upgrade
+            c = sqlite3.connect(p)
+            c.execute("PRAGMA foreign_keys=OFF")
+            c.execute("DROP TABLE users")
+            c.execute(dbm.SCHEMA_V2.replace("'owner','accountant','entry','viewer'", "'owner','viewer'"))
+            c.execute("INSERT INTO users(username, role, salt, hash, iters, created) VALUES ('old','owner',x'00',x'00',1,'x')")
+            c.execute("PRAGMA user_version=9"); c.commit(); c.close()
+            dbm.init_database(p)
+            c = dbm.connect(p)
+            self.assertEqual([u["username"] for u in auth.users(c)], ["old"])
+            auth.add_user(c, "clerk", "secret123", "entry")
+            c.close()
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)

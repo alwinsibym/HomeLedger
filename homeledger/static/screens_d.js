@@ -26,6 +26,31 @@ HL.amountWords = paise => {
   return "Rupees " + HL.words(rupees) + (ps ? " and " + HL.words(ps) + " Paise" : "") + " Only";
 };
 
+HL.printVoucher = async id => {
+  const v = await HL.get("/api/voucher", { id });
+  const co = HL.S.status.company, q = n => (n / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 });
+  const inv = ["Sales", "Purchase", "Credit Note", "Debit Note"].includes(v.vtype);
+  const title = inv ? ({ Sales: "Sales Invoice", Purchase: "Purchase Voucher", "Credit Note": "Credit Note", "Debit Note": "Debit Note" })[v.vtype] : v.vtype + " Voucher";
+  const items = (v.items || []).filter(x => x.kind === "normal");
+  const itemRows = items.map((x, i) => `<tr><td>${i + 1}</td><td>${esc(x.item)}</td><td class="r">${(x.qty_milli / 1000).toLocaleString("en-IN")} ${esc(x.unit || "")}</td><td class="r">${q(x.rate_paise)}</td><td class="r">${q(x.amount_paise)}</td></tr>`).join("");
+  const lineRows = v.lines.map(l => `<tr><td>${l.side}</td><td>${esc(l.ledger_name)}${l.cc_name ? " <small>(" + esc(l.cc_name) + ")</small>" : ""}</td><td class="r">${l.side === "Dr" ? q(l.amount_paise) : ""}</td><td class="r">${l.side === "Cr" ? q(l.amount_paise) : ""}</td></tr>`).join("");
+  const m = v.meta || {};
+  const html = `<!doctype html><meta charset="utf-8"><title>${esc(title)} ${v.number}</title><style>
+    @page { size: A4; margin: 14mm } body { font: 13px Arial, sans-serif; color: #111 } h1 { font-size: 20px; margin: 0 } h2 { font-size: 15px; margin: 2px 0 10px; letter-spacing: 1px }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px } th, td { border: 1px solid #888; padding: 5px 7px; text-align: left } th { background: #eee } .r { text-align: right }
+    .top { display: flex; justify-content: space-between; margin: 8px 0 } .tot td { font-weight: bold; background: #f5f5f5 } .sign { display: flex; justify-content: space-between; margin-top: 60px } small { color: #555 }
+    .stamp { color: #b00; border: 2px solid #b00; display: inline-block; padding: 2px 8px; font-weight: bold; transform: rotate(-6deg) }
+  </style><h1>${esc(co.name)}</h1><h2>${esc(title.toUpperCase())}</h2>${v.status === "cancelled" ? '<div class="stamp">CANCELLED</div>' : ""}
+  <div class="top"><div>No.: <b>${v.number}</b> (${esc(v.fy)})${v.ref ? "<br>Ref: " + esc(v.ref) : ""}</div><div>Date: <b>${showDate(v.date)}</b></div></div>
+  ${m.inst_no ? `<div>Cheque / instrument: ${esc(m.inst_no)} ${m.inst_date ? "dated " + showDate(m.inst_date) : ""} ${esc(m.bank_name || "")}</div>` : ""}
+  ${items.length ? `<table><thead><tr><th>#</th><th>Description</th><th class="r">Quantity</th><th class="r">Rate</th><th class="r">Amount</th></tr></thead><tbody>${itemRows}</tbody></table>` : ""}
+  <table><thead><tr><th style="width:3rem">Dr/Cr</th><th>Particulars</th><th class="r">Debit</th><th class="r">Credit</th></tr></thead><tbody>${lineRows}
+    <tr class="tot"><td></td><td>Total</td><td class="r">${q(v.total_paise)}</td><td class="r">${q(v.total_paise)}</td></tr></tbody></table>
+  <p><b>Amount in words:</b> ${esc(HL.amountWords(v.total_paise))}</p>${v.narration ? "<p><b>Narration:</b> " + esc(v.narration) + "</p>" : ""}
+  <div class="sign"><div>Prepared by</div><div>Authorised signatory</div></div>`;
+  HL.printHtml(html);
+};
+
 HL.printCheque = async row => {
   const dt = (row.inst_date || row.vdate).split("-");           // yyyy-mm-dd -> dd mm yyyy boxes
   const boxes = (dt[2] + dt[1] + dt[0]).split("").map(x => `<span class="bx">${x}</span>`).join("");

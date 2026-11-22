@@ -15,7 +15,9 @@ from .errors import UserError
 ITERS = 240_000
 MIN_LEN = 4
 IDLE_CHOICES = (5, 10, 15, 30, 60, 0)      # minutes; 0 = never lock automatically
-ROLES = ("owner", "viewer")
+ROLES = ("owner", "accountant", "entry", "viewer")
+ROLE_NAMES = {"owner": "Owner (everything)", "accountant": "Accountant (all entries and masters, no security or restore)",
+              "entry": "Data entry (vouchers only)", "viewer": "View only"}
 
 
 def _hash(password: str, salt: bytes, iters: int = ITERS) -> bytes:

@@ -96,7 +96,7 @@ HL.menuAction = function (a) {
   else if (a === "company") HL.go("company");
   else if (a === "data") HL.go("utilities");
   else if (a === "export") { const l = h("a", { href: "/api/export", download: "" }); document.body.append(l); l.click(); l.remove(); }
-  else if (a === "print") window.print();
+  else if (a === "print") { if (HL.cur && HL.cur.name === "voucher" && HL.cur.params && HL.cur.params.id && HL.voucherActs && HL.voucherActs.print) HL.voucherActs.print(); else window.print(); }
   else if (a === "lock") HL.lockNow();
   else if (a === "help") HL.openHelp();
 };

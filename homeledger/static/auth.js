@@ -81,6 +81,6 @@ HL.updateStatusBar = function () {
   if (s.copy_dir) parts.push(h("span", { class: s.copy_error ? "bad" : "" }, s.copy_error ? "⚠ Second copy failed" : "Second copy: " + (s.last_external_copy ? t(s.last_external_copy) : "waiting") + (s.copy_protected ? " (protected)" : "")));
   else parts.push(h("span", { class: "warnt" }, "No second copy"));
   parts.push(h("span", { title: "HomeLedger works on this computer only and does not use the internet." }, "Offline"));
-  if (HL.auth.enabled) parts.push(h("button", { class: "linkbtn", type: "button", onclick: HL.lockNow, title: "Lock now (Ctrl+L)" }, "🔒 " + HL.auth.user + (HL.isViewer() ? " (view only)" : "")));
+  if (HL.auth.enabled) parts.push(h("button", { class: "linkbtn", type: "button", onclick: HL.lockNow, title: "Lock now (Ctrl+L)" }, "🔒 " + HL.auth.user + (HL.isViewer() ? " (view only)" : HL.auth.role === "entry" ? " (data entry)" : HL.auth.role === "accountant" ? " (accountant)" : "")));
   el.replaceChildren(...parts);
 };

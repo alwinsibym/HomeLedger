@@ -524,6 +524,7 @@ for _p in ("/api/backup/create", "/api/backup/restore", "/api/backup/restore_fil
 
 
 # ---- sign-in ------------------------------------------------------------------
+ENTRY_OK = {"/api/voucher/save", "/api/voucher/status", "/api/voucher/activate", "/api/notice/dismiss", "/api/bank/date"}
 PUBLIC = {"/api/ping", "/api/closing", "/api/auth/state", "/api/auth/login", "/api/auth/reset", "/api/quit"}
 
 
@@ -769,7 +770,7 @@ def r_repair(app, q, b):
 
 
 r_tally_import.is_write = False
-for _f in (r_tally_import, r_repair):
+for _f in (r_tally_import, r_repair, r_backup_restore, r_backup_restore_file):
     _f.owner_only = True
 
 
@@ -831,7 +832,10 @@ def make_handler(app: App):
                 if getattr(fn, "owner_only", False) and s["role"] != "owner":
                     return self._json({"error": "Only the owner can do this."}, 403)
                 if getattr(fn, "is_write", False) and s["role"] != "owner" and not getattr(fn, "viewer_ok", False):
-                    return self._json({"error": "This user can only view. Sign in as the owner to make changes."}, 403)
+                    if s["role"] == "viewer":
+                        return self._json({"error": "This user can only view. Sign in as the owner to make changes."}, 403)
+                    if s["role"] == "entry" and u.path not in ENTRY_OK:
+                        return self._json({"error": "This user can enter and cancel vouchers only. Ask the owner for other changes."}, 403)
                 q["_user"] = s
             elif not app.auth_on:
                 q["_user"] = {"id": 0, "username": "", "role": "owner"}
