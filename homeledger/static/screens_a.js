@@ -24,6 +24,7 @@ HL.menus = (() => {
       ["i", "R", "Reports", "Balance Sheet, Profit & Loss, Trial Balance", menu("reports")],
       ["i", "D", "Display", "Ledgers, books, search, more reports", menu("display")],
       ["i", "H", "Dashboard", "Overview and charts", go("dashboard")],
+      ["i", "K", "Select Company", "F1: open, create, split, merge, year-end close", go("companies")],
       ["i", "Q", "Quit", "Close HomeLedger", () => HL.quit()]] },
     masters: { title: "Masters", sub: "Accounts Info", items: [
       ["h", "Accounts Info"],
@@ -147,6 +148,7 @@ function renderMenu(sc, id) {
     { k: "F7", label: "Journal", fn: () => HL.go("voucher", { vtype: "Journal" }) },
     "sep",
     { k: "Alt+G", label: "Go To", fn: () => HL.openGoTo() },
+    { k: "F1", label: "Select Company", fn: () => HL.go("companies") },
     { k: "F3", label: "Company Info", fn: () => HL.go("company") },
     { k: "Alt+F1", label: "Dashboard", fn: () => HL.go("dashboard") });
   HL.setKeys(keys);

@@ -61,6 +61,26 @@ class App:
                 self.last_auto = max(self.last_auto, dt.datetime.fromisoformat(b["when"]).timestamp())
 
     # -- helpers ----------------------------------------------------------
+    def switch_company(self, cid: str):
+        """Open another company. A backup of the one being left is taken first if it has unsaved changes."""
+        from . import companies as co
+        f, b = co.paths(cid)
+        if not f.exists():
+            raise UserError("The data file of that company is missing.")
+        dbm.init_database(f)                      # verifies, and upgrades an older company file
+        if self.dirty:
+            try:
+                self.snapshot("auto")
+            except Exception:
+                log.exception("backup before switching failed")
+        co.set_current(cid)
+        b.mkdir(parents=True, exist_ok=True)
+        self.db_file, self.backup_dir = f, b
+        self.dirty = False
+        self.last_auto = 0.0
+        self.sessions.clear()
+        self.refresh_auth()
+
     def refresh_auth(self):
         c = self.conn()
         try:
@@ -342,6 +362,75 @@ POST["/api/group/save"] = _writer(lambda c, b: sv.save_group(c, b))
 POST["/api/group/delete"] = _writer(lambda c, b: sv.delete_group(c, int(b.get("id") or 0)) or {"ok": True})
 POST["/api/cc/save"] = _writer(lambda c, b: sv.save_cc(c, b))
 POST["/api/cc/delete"] = _writer(lambda c, b: sv.delete_cc(c, int(b.get("id") or 0)) or {"ok": True})
+def _co():
+    from . import companies as co
+    return co
+
+
+@route(GET, "/api/companies")
+def r_companies(app, q, b):
+    return {"companies": _co().listing()}
+
+
+@route(POST, "/api/companies/open")
+def r_co_open(app, q, b):
+    with app.lock:
+        app.switch_company(str(b.get("id") or ""))
+    return {"ok": True}
+
+
+@route(POST, "/api/companies/create")
+def r_co_create(app, q, b):
+    cid = _co().create(b.get("name"), b.get("books_begin") or None)
+    if b.get("open"):
+        with app.lock:
+            app.switch_company(cid)
+    return {"ok": True, "id": cid}
+
+
+@route(POST, "/api/companies/remove")
+def r_co_remove(app, q, b):
+    _co().remove_from_list(str(b.get("id") or ""))
+    return {"ok": True}
+
+
+@route(POST, "/api/companies/carry")
+def r_co_carry(app, q, b):
+    """Split / year-end close: a new company that starts on `cutoff` with the balances carried forward."""
+    with app.lock:
+        app.snapshot("pre-split")
+        c = app.conn()
+        try:
+            cid, pending = _co().carry_forward(c, app.db_file, b.get("cutoff"), b.get("name") or "")
+        finally:
+            c.close()
+    if b.get("open"):
+        with app.lock:
+            app.switch_company(cid)
+    return {"ok": True, "id": cid, "pending": pending}
+
+
+@route(POST, "/api/companies/merge")
+def r_co_merge(app, q, b):
+    cid = str(b.get("id") or "")
+    f, _ = _co().paths(cid)
+    if cid == _co().current_id() or not f.exists():
+        raise UserError("Please choose a different company to merge from.")
+    with app.lock:
+        app.snapshot("pre-merge")
+        c = app.conn()
+        try:
+            res = _co().merge_from(c, f)
+        finally:
+            c.close()
+        app.dirty = True
+    return res
+
+
+for _p in ("/api/companies/open", "/api/companies/create", "/api/companies/remove", "/api/companies/carry", "/api/companies/merge"):
+    POST[_p].owner_only = True
+
+
 POST["/api/company/save"] = _writer(lambda c, b: sv.save_company(c, b) or {"ok": True})
 POST["/api/openings/save"] = _writer(lambda c, b: sv.set_openings(c, b.get("items") or []))
 

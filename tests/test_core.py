@@ -560,5 +560,67 @@ class TestStartup(unittest.TestCase):
             with self.assertRaises(UserError): dbm.init_database(p)
 
 
+class TestCompanies(Base):
+    def setUp(self):
+        super().setUp()
+        os.environ["HOMELEDGER_DATA"] = self.tmp.name
+        from homeledger import companies as co
+        self.co = co
+        from homeledger import config
+        dbm._create_fresh(config.db_path())
+
+    def test_create_list_and_remove(self):
+        cid = self.co.create("Second Co")
+        names = [c["name"] for c in self.co.listing()]
+        self.assertIn("Second Co", names)
+        self.co.set_current(cid)
+        self.assertEqual(self.co.current_id(), cid)
+        with self.assertRaises(UserError): self.co.remove_from_list(cid)
+        self.co.set_current("main")
+        self.co.remove_from_list(cid)
+        self.assertNotIn("Second Co", [c["name"] for c in self.co.listing()])
+        self.assertTrue(self.co.paths(cid)[0].exists())      # files are kept
+
+    def test_year_end_carry_forward(self):
+        self.rec("2025-06-10", "Rubber Sales", 100000, "Cash")
+        self.pay("2025-09-01", "Groceries & Provisions", 30000)
+        self.pay("2026-05-05", "Groceries & Provisions", 10000)
+        before = rp.balance_sheet(self.c, "2026-04-01", "2027-03-31")
+        cid, _ = self.co.carry_forward(self.c, self.path, "2026-04-01", "Next Year")
+        f, _b = self.co.paths(cid)
+        dbm.init_database(f)
+        n = dbm.connect(f)
+        try:
+            self.assertEqual(dbm.get_company(n)["books_begin"], "2026-04-01")
+            self.assertEqual(n.execute("SELECT COUNT(*) FROM vouchers").fetchone()[0], 1)   # only the 2026 one
+            after = rp.balance_sheet(n, "2026-04-01", "2027-03-31")
+            self.assertEqual(str(before["total_left"] if "total_left" in before else before.get("total")),
+                             str(after["total_left"] if "total_left" in after else after.get("total")))
+            tb = rp.trial_balance(n, "2026-04-01", "2027-03-31")
+            self.assertEqual(tb["closing_dr"], tb["closing_cr"])
+        finally:
+            n.close()
+        # original untouched
+        self.assertEqual(self.c.execute("SELECT COUNT(*) FROM vouchers").fetchone()[0], 3)
+
+    def test_merge(self):
+        self.pay("2026-05-05", "Groceries & Provisions", 10000)
+        cid = self.co.create("Other", "2025-04-01")
+        f, _b = self.co.paths(cid)
+        o = dbm.connect(f)
+        sv.save_ledger(o, {"name": "Rent Income", "group_id": o.execute("SELECT id FROM acct_groups WHERE code='INDIRECT_INC'").fetchone()[0]})
+        cash = o.execute("SELECT id FROM ledgers WHERE name='Cash'").fetchone()[0]
+        ri = o.execute("SELECT id FROM ledgers WHERE name='Rent Income'").fetchone()[0]
+        sv.save_voucher(o, {"vtype": "Receipt", "date": "2026-06-01", "lines": [
+            {"ledger_id": ri, "side": "Cr", "amount": "500"}, {"ledger_id": cash, "side": "Dr", "amount": "500"}]})
+        o.close()
+        res = self.co.merge_from(self.c, f)
+        self.assertEqual(res["vouchers"], 1)
+        self.assertEqual(res["ledgers"], 1)
+        self.assertEqual(self.c.execute("SELECT COUNT(*) FROM vouchers").fetchone()[0], 2)
+        tb = rp.trial_balance(self.c, "2026-04-01", "2027-03-31")
+        self.assertEqual(tb["total_dr"], tb["total_cr"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)

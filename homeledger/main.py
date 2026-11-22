@@ -116,8 +116,13 @@ def run(argv=None) -> int:
                 open_window(f"http://127.0.0.1:{known}/")
         return 0
 
-    db_file = config.db_path()
-    backups = config.backup_dir()
+    try:
+        from . import companies
+        db_file, backups = companies.paths(companies.current_id())     # the company that was open last time
+        backups.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        log.exception("company list unreadable - opening the first company")
+        db_file, backups = config.db_path(), config.backup_dir()
     notice = None
     try:
         try:

@@ -3,6 +3,7 @@
 HL.gotoItems = function () {
   const it = [], add = (label, hint, fn, kind) => it.push({ label, hint: hint || "", fn, kind: kind || "Screen" });
   add("Gateway of HomeLedger", "Main menu", () => HL.go("gateway"));
+  add("Select Company (F1)", "Open, create, split, merge, year-end close", () => HL.go("companies"));
   add("Dashboard", "Overview and charts", () => HL.go("dashboard"));
   add("Day Book", "All entries day by day", () => HL.go("daybook"));
   add("Search", "Find any entry", () => HL.go("search"));
@@ -106,7 +107,7 @@ document.addEventListener("keydown", e => {
   const k = e.key.toLowerCase(), map = { g: "goto", k: "company", y: "data", e: "export", p: "print", l: "lock" };
   if (map[k]) { e.preventDefault(); e.stopPropagation(); HL.menuAction(map[k]); }
 }, true);
-document.addEventListener("keydown", e => { if (e.key === "F1" && !document.getElementById("lock")) { e.preventDefault(); e.stopPropagation(); if (!modalStack.length) HL.openHelp(); } }, true);
+document.addEventListener("keydown", e => { if (e.key === "F1" && !e.altKey && !document.getElementById("lock")) { e.preventDefault(); e.stopPropagation(); if (!modalStack.length) { if (e.shiftKey) HL.openHelp(); else if (!HL.cur || HL.cur.name !== "voucher") HL.go("companies"); } } }, true);
 
 HL.applyLook = function (look) {
   look = look === "classic" ? "classic" : "prime";
