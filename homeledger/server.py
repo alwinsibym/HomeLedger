@@ -800,6 +800,31 @@ def r_tds_compute(app, q, b):          # calculates only; nothing is saved
         c.close()
 
 
+def _pr():
+    from . import payroll
+    return payroll
+
+
+GET["/api/payroll/heads"] = _reader(lambda c, q: _pr().heads(c))
+GET["/api/payroll/employees"] = _reader(lambda c, q: _pr().employees(c))
+GET["/api/payroll/run"] = _reader(lambda c, q: _pr().get_run(c, q.get("month")))
+GET["/api/payroll/register"] = _reader(lambda c, q: _pr().register(c, parse_iso(q.get("from")), parse_iso(q.get("to"))))
+POST["/api/payroll/head/save"] = _writer(lambda c, b: _pr().save_head(c, b))
+POST["/api/payroll/employee/save"] = _writer(lambda c, b: _pr().save_employee(c, b))
+POST["/api/payroll/run/save"] = _writer(lambda c, b: _pr().save_run(c, b))
+POST["/api/payroll/run/post"] = _writer(lambda c, b: _pr().post_run(c, b.get("month")))
+POST["/api/payroll/run/reopen"] = _writer(lambda c, b: _pr().reopen_run(c, b.get("month")))
+
+
+@route(POST, "/api/payroll/run/calc")
+def r_pr_calc(app, q, b):          # calculates only
+    c = app.conn()
+    try:
+        return _pr().calc_run(c, b)
+    finally:
+        c.close()
+
+
 @route(GET, "/api/tallyxml")
 def r_tally_export(app, q, b):
     from . import utilities as ut

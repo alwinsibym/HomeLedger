@@ -9,7 +9,7 @@ from pathlib import Path
 
 from .errors import CorruptDatabase, UserError
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 SCHEMA_V4 = """
 CREATE TABLE IF NOT EXISTS bank_clearing (
@@ -204,6 +204,72 @@ TDS_SEED = (
     ("Rent: plant and machinery", "194I(a)", "1008", 200, 5000000, 0),
     ("Interest other than on securities", "194A", "1022", 1000, 0, 1000000),
 )
+
+
+SCHEMA_V13 = (
+    """CREATE TABLE IF NOT EXISTS pay_employees (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        designation TEXT NOT NULL DEFAULT '',
+        pan TEXT NOT NULL DEFAULT '',
+        joined TEXT,
+        left_on TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        notes TEXT NOT NULL DEFAULT ''
+    )""",
+    """CREATE TABLE IF NOT EXISTS pay_heads (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        kind TEXT NOT NULL CHECK (kind IN ('earning','deduction')),
+        is_basic INTEGER NOT NULL DEFAULT 0,
+        calc TEXT NOT NULL DEFAULT 'fixed' CHECK (calc IN ('fixed','percent_basic')),
+        ledger_id INTEGER REFERENCES ledgers(id),
+        sort INTEGER NOT NULL DEFAULT 100,
+        is_active INTEGER NOT NULL DEFAULT 1
+    )""",
+    """CREATE TABLE IF NOT EXISTS pay_structure (
+        employee_id INTEGER NOT NULL REFERENCES pay_employees(id) ON DELETE CASCADE,
+        head_id INTEGER NOT NULL REFERENCES pay_heads(id),
+        amount_paise INTEGER NOT NULL DEFAULT 0,
+        rate_bp INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (employee_id, head_id)
+    )""",
+    """CREATE TABLE IF NOT EXISTS pay_runs (
+        id INTEGER PRIMARY KEY,
+        month TEXT NOT NULL UNIQUE,
+        working_days INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','posted')),
+        voucher_id INTEGER REFERENCES vouchers(id),
+        created_at TEXT NOT NULL
+    )""",
+    """CREATE TABLE IF NOT EXISTS pay_slips (
+        id INTEGER PRIMARY KEY,
+        run_id INTEGER NOT NULL REFERENCES pay_runs(id) ON DELETE CASCADE,
+        employee_id INTEGER NOT NULL REFERENCES pay_employees(id),
+        days_present REAL NOT NULL,
+        gross_paise INTEGER NOT NULL,
+        deduct_paise INTEGER NOT NULL,
+        net_paise INTEGER NOT NULL,
+        UNIQUE (run_id, employee_id)
+    )""",
+    """CREATE TABLE IF NOT EXISTS pay_slip_lines (
+        slip_id INTEGER NOT NULL REFERENCES pay_slips(id) ON DELETE CASCADE,
+        head_id INTEGER NOT NULL REFERENCES pay_heads(id),
+        kind TEXT NOT NULL,
+        amount_paise INTEGER NOT NULL,
+        PRIMARY KEY (slip_id, head_id)
+    )""",
+)
+
+
+def apply_v13(conn):
+    for stmt in SCHEMA_V13:
+        conn.execute(stmt)
+    if conn.execute("SELECT COUNT(*) FROM pay_heads").fetchone()[0] == 0:
+        conn.executemany("INSERT INTO pay_heads(name, kind, is_basic, calc, sort) VALUES (?,?,?,?,?)",
+                         [("Basic Salary", "earning", 1, "fixed", 10), ("Allowances", "earning", 0, "fixed", 20),
+                          ("Provident Fund (employee)", "deduction", 0, "percent_basic", 110),
+                          ("Advance recovery", "deduction", 0, "fixed", 120)])
 
 
 def apply_v12(conn):
@@ -595,6 +661,7 @@ def _create_fresh(path, today=None) -> None:
             apply_v10(conn)
             apply_v11(conn)
             apply_v12(conn)
+            apply_v13(conn)
             _seed(conn, today or dt.date.today())
             conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     finally:
@@ -725,6 +792,8 @@ def init_database(path, log=None) -> None:
                     apply_v11(conn)
                 if ver < 12:
                     apply_v12(conn)
+                if ver < 13:
+                    apply_v13(conn)
                 bad = conn.execute("PRAGMA foreign_key_check").fetchall()
                 if bad:
                     raise sqlite3.IntegrityError("upgrade check failed")

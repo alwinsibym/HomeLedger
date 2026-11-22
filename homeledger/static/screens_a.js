@@ -24,8 +24,14 @@ HL.menus = (() => {
       ["i", "R", "Reports", "Balance Sheet, Profit & Loss, Trial Balance", menu("reports")],
       ["i", "D", "Display", "Ledgers, books, search, more reports", menu("display")],
       ["i", "H", "Dashboard", "Overview and charts", go("dashboard")],
+      ["i", "P", "Payroll", "Employees, monthly salary, payslips", menu("payroll")],
       ["i", "K", "Select Company", "F1: open, create, split, merge, year-end close", go("companies")],
       ["i", "Q", "Quit", "Close HomeLedger", () => HL.quit()]] },
+    payroll: { title: "Payroll", sub: "Salary", items: [
+      ["i", "M", "Monthly Payroll", "Calculate, post and print payslips", go("payrun")],
+      ["i", "E", "Employees", "Staff and their salary structure", go("employees")],
+      ["i", "H", "Pay Heads", "Basic, allowances, deductions", go("payheads")],
+      ["i", "R", "Payroll Register", "Month-wise totals", go("payregister")]] },
     masters: { title: "Masters", sub: "Accounts Info", items: [
       ["h", "Accounts Info"],
       ["i", "G", "Groups", "", menu("m_groups")],

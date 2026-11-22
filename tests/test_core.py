@@ -732,5 +732,33 @@ class TestTDS(Base):
         self.assertTrue(c2["liable"])
 
 
+class TestPayroll(Base):
+    def test_payroll_flow(self):
+        from homeledger import payroll as pr
+        hs = {h["name"]: h["id"] for h in pr.heads(self.c)}
+        e = pr.save_employee(self.c, {"name": "Raju", "structure": {hs["Basic Salary"]: {"amount_paise": 2000000}, hs["Allowances"]: {"amount_paise": 500000},
+                                                                      hs["Provident Fund (employee)"]: {"rate_bp": 1200}}})["id"]
+        run = pr.get_run(self.c, "2026-06")
+        s = run["slips"][0]
+        self.assertEqual((s["gross_paise"], s["deduct_paise"], s["net_paise"]), (2500000, 240000, 2260000))
+        # half the month present: pay and PF are cut in proportion
+        c = pr.calc_slip(run["heads"], pr.employees(self.c)[0]["structure"], 15, 30)
+        self.assertEqual((c["gross_paise"], c["deduct_paise"]), (1250000, 120000))
+        # a typed TDS / advance override is kept
+        c2 = pr.calc_slip(run["heads"], pr.employees(self.c)[0]["structure"], 30, 30, {hs["Advance recovery"]: 100000})
+        self.assertEqual(c2["deduct_paise"], 340000)
+        with self.assertRaises(UserError): pr.calc_slip(run["heads"], {hs["Basic Salary"]: {"amount_paise": 100, "rate_bp": 0}}, 31, 30)
+        pr.save_run(self.c, {"month": "2026-06", "working_days": 30, "slips": [{"employee_id": e, "days_present": 30}]})
+        out = pr.post_run(self.c, "2026-06")
+        v = sv.get_voucher(self.c, out["voucher_id"])
+        self.assertEqual(sum(l["amount_paise"] for l in v["lines"] if l["side"] == "Dr"), 2500000)
+        with self.assertRaises(UserError): pr.post_run(self.c, "2026-06")
+        with self.assertRaises(UserError): pr.reopen_run(self.c, "2026-06")        # voucher still live
+        sv.set_voucher_status(self.c, out["voucher_id"], "cancelled")
+        pr.reopen_run(self.c, "2026-06")
+        self.assertEqual(pr.get_run(self.c, "2026-06")["status"], "draft")
+        tb = rp.trial_balance(self.c, "2026-04-01", "2027-03-31")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)
