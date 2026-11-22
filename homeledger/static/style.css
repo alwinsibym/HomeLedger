@@ -348,3 +348,13 @@ table.items input[type=text] { min-width: 0; }
 .alerts .al .dot { width: .7rem; height: .7rem; border-radius: 50%; background: var(--s1); flex: none; }
 .alerts .al.red .dot { background: #c62828; }
 .alerts .al.amber .dot { background: #d98a00; }
+
+/* guide */
+.guide-nav { display: flex; flex-wrap: wrap; gap: .3rem .9rem; margin: .4rem 0 .8rem; }
+.guide-nav a { color: var(--link, #0b4f94); text-decoration: none; font-weight: 600; }
+.guide-nav a:hover, .guide-nav a:focus { text-decoration: underline; }
+.guide-sec { margin-bottom: .9rem; max-width: 62rem; }
+.guide-sec h2 { margin: 0 0 .5rem; font-size: 1.15rem; }
+.guide-img { width: 100%; max-width: 56rem; border: 1px solid var(--line, #d6dbe4); border-radius: 8px; margin-top: .6rem; }
+kbd { font: inherit; font-weight: 700; padding: .05rem .4rem; border: 1px solid var(--line, #b9c1cf); border-bottom-width: 2px; border-radius: 5px; background: var(--card, #fff); white-space: nowrap; }
+@media print { .guide-nav, .row { display: none; } .guide-sec { break-inside: avoid; } }

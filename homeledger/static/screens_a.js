@@ -26,6 +26,7 @@ HL.menus = (() => {
       ["i", "H", "Dashboard", "Overview and charts", go("dashboard")],
       ["i", "P", "Payroll", "Employees, monthly salary, payslips", menu("payroll")],
       ["i", "K", "Select Company", "F1: open, create, split, merge, year-end close", go("companies")],
+      ["i", "G", "Guide and Help", "Step-by-step help, shortcut map, quick tour", go("guide")],
       ["i", "Q", "Quit", "Close HomeLedger", () => HL.quit()]] },
     payroll: { title: "Payroll", sub: "Salary", items: [
       ["i", "M", "Monthly Payroll", "Calculate, post and print payslips", go("payrun")],
@@ -174,7 +175,7 @@ function renderMenu(sc, id) {
     { k: "Alt+F1", label: "Dashboard", fn: () => HL.go("dashboard") });
   HL.setKeys(keys);
 }
-HL.screens.gateway = { title: "", async render(sc) { await loadMasters(); renderMenu(sc, "root"); } };
+HL.screens.gateway = { title: "", async render(sc) { await loadMasters(); renderMenu(sc, "root"); if (HL.startTour && !HL._tourAsked) { HL._tourAsked = true; setTimeout(() => HL.startTour(false), 500); } } };
 HL.screens.menu = { title: p => (HL.menus[p.id] || {}).title || "", async render(sc, params) { await loadMasters(); renderMenu(sc, params.id); } };
 function noticeBanner() {
   const n = HL.S.status && HL.S.status.notice;

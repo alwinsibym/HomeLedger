@@ -828,3 +828,14 @@ class TestTemplatesInsights(Base):
         self.assertEqual(sum(m["expense"] for m in y["this_year"]), 5000 * 100 * 4)
         self.assertIsInstance(ins.alerts(self.c, "2026-08-31"), list)
         tp.delete(self.c, tp.listing(self.c)[0]["id"])
+
+
+class TestGuide(unittest.TestCase):
+    def test_guide_images_exist(self):
+        import json
+        g = Path(__file__).resolve().parent.parent / "homeledger" / "static" / "guide"
+        data = json.loads((g / "guide.json").read_text(encoding="utf-8"))
+        self.assertTrue(data["sections"] and data["shortcuts"])
+        for s in data["sections"]:
+            if s.get("image"):
+                self.assertTrue((g / (s["image"] + ".png")).is_file(), s["image"])
