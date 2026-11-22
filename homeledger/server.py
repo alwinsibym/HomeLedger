@@ -733,6 +733,46 @@ def r_export(app, q, b):
         c.close()
 
 
+@route(GET, "/api/tallyxml")
+def r_tally_export(app, q, b):
+    from . import utilities as ut
+    c = app.conn()
+    try:
+        frm = parse_iso(q.get("from") or "0001-01-01"); to = parse_iso(q.get("to") or "9999-12-31")
+        return ("xml", f"HomeLedger-tally-{app.today().replace('-', '')}.xml", ut.export_xml(c, frm, to))
+    finally:
+        c.close()
+
+
+@route(POST, "/api/tallyxml/import")
+def r_tally_import(app, q, b):
+    from . import utilities as ut
+    with app.lock:
+        app.snapshot("pre-import")
+        c = app.conn()
+        try:
+            return ut.import_xml(c, str(b.get("xml") or "").encode("utf-8"))
+        finally:
+            c.close()
+
+
+@route(POST, "/api/repair")
+def r_repair(app, q, b):
+    from . import utilities as ut
+    with app.lock:
+        app.snapshot("pre-repair")
+        c = app.conn()
+        try:
+            return ut.repair(c)
+        finally:
+            c.close()
+
+
+r_tally_import.is_write = False
+for _f in (r_tally_import, r_repair):
+    _f.owner_only = True
+
+
 # =============================================================================
 # HTTP plumbing
 # =============================================================================
@@ -822,8 +862,8 @@ def make_handler(app: App):
                 return self._json({"error": "Something went wrong inside HomeLedger. Nothing was saved and your "
                                             "existing data is safe. Please try again; if it keeps happening, "
                                             "tell the person who set this up (details are in the log file)."}, 500)
-            if isinstance(res, tuple) and res and res[0] == "zip":
-                return self._send(200, res[2], "application/zip",
+            if isinstance(res, tuple) and res and res[0] in ("zip", "xml"):
+                return self._send(200, res[2], "application/zip" if res[0] == "zip" else "application/xml",
                                   {"Content-Disposition": f'attachment; filename="{res[1]}"'})
             hdrs = None
             if isinstance(res, dict) and ("_cookie" in res or res.get("_clear")):

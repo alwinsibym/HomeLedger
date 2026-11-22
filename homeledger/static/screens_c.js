@@ -162,7 +162,7 @@ HL.screens.utilities = {
   async render(sc, params) {
     await loadMasters();
     const tab = params.tab || "backup";
-    const defs = [["backup", "Backup & Restore"], ["health", "Health Check"], ["export", "Export to Excel"], ["settings", "Settings"], ["security", "Security"], ["audit", "Audit Trail"]];
+    const defs = [["backup", "Backup & Restore"], ["health", "Health Check"], ["repair", "Data Repair"], ["tally", "Tally XML"], ["export", "Export to Excel"], ["settings", "Settings"], ["security", "Security"], ["audit", "Audit Trail"]];
     const root = h("div", {}, h("h1", { class: "title" }, "Utilities"), h("div", { class: "chips", style: "margin:.4rem 0 .9rem" }, defs.map(([k, l]) => h("button", { class: "chip" + (tab === k ? " on" : ""), type: "button", onclick: () => { HL.cur.params = { tab: k }; HL.refresh(); } }, l))));
     const st = HL.S.status;
     if (tab === "backup") {
@@ -202,6 +202,28 @@ HL.screens.utilities = {
       const r = await HL.get("/api/health");
       root.append(h("div", { class: "banner " + (r.all_ok ? "ok" : "warn") }, r.all_ok ? "Everything looks healthy." : "Some checks need attention."), h("div", { class: "checks" }, r.checks.map(c => h("div", { class: "ck " + (c.ok ? "ok" : "bad") }, h("b", {}, (c.ok ? "\u2713 " : "\u26a0 ") + c.name), h("span", {}, c.detail)))),
         h("p", { class: "hint" }, "These checks never change your data."));
+    } else if (tab === "repair") {
+      const out = h("div", {});
+      const run = h("button", { class: "btn primary", onclick: async () => {
+        if (!await confirmBox("Repair data", "HomeLedger will take a safety copy, check every record, rebuild its indexes and compact the file. No entry is changed or removed. It may take a few seconds.", "Start repair")) return;
+        try { const r = await HL.post("/api/repair", {});
+          out.replaceChildren(h("div", { class: "banner " + (r.ok ? "ok" : "warn") }, r.message), h("div", { class: "checks" }, r.steps.map(c => h("div", { class: "ck " + (c.ok ? "ok" : "bad") }, h("b", {}, (c.ok ? "\u2713 " : "\u26a0 ") + c.name), h("span", {}, c.detail)))));
+        } catch (e) { fail(e); } } }, "Check and repair now");
+      root.append(h("div", { class: "panel", style: "padding:.9rem;max-width:44rem" }, h("h3", { style: "margin-top:0" }, "Data Repair"), h("p", {}, "Like Tally's Rewrite / Repair: checks the data file for damage, confirms every voucher balances, rebuilds the search tables and compacts the file. If the file itself is damaged and cannot be fixed, HomeLedger restores the latest good backup when it starts."), run), out);
+    } else if (tab === "tally") {
+      const f = h("input", { type: "file", accept: ".xml,text/xml", "aria-label": "Tally XML file" }), res = h("div", {});
+      const imp = h("button", { class: "btn primary", onclick: async () => {
+        const file = f.files[0]; if (!file) { say("Choose an XML file first.", "err"); return; }
+        if (!await confirmBox("Import from Tally XML", "Masters and vouchers in the file will be added to this company (a backup is taken first). Existing ledgers are not changed. Import a file only once.", "Import")) return;
+        try { const r = await HL.post("/api/tallyxml/import", { xml: await file.text() }); await loadMasters();
+          res.replaceChildren(h("div", { class: "banner " + (r.skipped.length || r.errors.length ? "warn" : "ok") }, `Added ${r.groups} groups, ${r.ledgers} ledgers, ${r.vouchers} vouchers.`),
+            ...(r.skipped.concat(r.errors).length ? [h("p", { class: "hint" }, "Not imported:"), h("ul", {}, r.skipped.concat(r.errors).map(x => h("li", {}, x)))] : []));
+        } catch (e) { fail(e); } } }, "Import");
+      const P = getPeriod();
+      root.append(h("div", { class: "panel", style: "padding:.9rem;max-width:44rem" }, h("h3", { style: "margin-top:0" }, "Export to Tally (XML)"), h("p", {}, "Groups, ledgers with opening balances, and posted vouchers for the current period (" + periodText() + ") in Tally's XML import format."),
+        h("a", { class: "btn primary", href: "/api/tallyxml?from=" + P.from + "&to=" + P.to, download: "" }, "Download XML"),
+        h("h3", {}, "Import from Tally (XML)"), h("p", {}, "Accepts masters (groups, ledgers) and accounting vouchers (Payment, Receipt, Contra, Journal, Sales, Purchase, notes). Inventory, GST and bill details in the file are ignored."), f, h("div", { style: "margin-top:.5rem" }, imp),
+        h("p", { class: "hint" }, "The format follows Tally's published XML layout but has been checked only against HomeLedger's own files. Try a small file first and compare totals.")), res);
     } else if (tab === "export") {
       root.append(h("div", { class: "panel", style: "padding:.9rem;max-width:40rem" }, h("h3", { style: "margin-top:0" }, "Export everything to Excel"), h("p", {}, "Downloads one zip file with every entry, ledger, activity and the audit trail as spreadsheets (CSV) that open in Excel. This is a read-only copy for your own records and for sharing with an accountant; to protect your data use Backup."),
         h("a", { class: "btn primary", href: "/api/export", download: "" }, "Download export (zip)")));

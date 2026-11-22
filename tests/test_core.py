@@ -622,5 +622,26 @@ class TestCompanies(Base):
         self.assertEqual(tb["total_dr"], tb["total_cr"])
 
 
+class TestUtilities(Base):
+    def test_repair_and_tally_roundtrip(self):
+        from homeledger import utilities as ut
+        self.pay("2026-05-05", "Groceries & Provisions", 1250)
+        r = ut.repair(self.c)
+        self.assertTrue(r["ok"], r)
+        xml = ut.export_xml(self.c, "2026-04-01", "2027-03-31")
+        self.assertIn(b"<AMOUNT>-1250.00</AMOUNT>", xml)
+        # import the same file into a fresh book
+        p2 = Path(self.tmp.name) / "b.db"; dbm._create_fresh(p2)
+        c2 = dbm.connect(p2)
+        try:
+            res = ut.import_xml(c2, xml)
+            self.assertEqual(res["vouchers"], 1, res)
+            self.assertEqual(c2.execute("SELECT debit_paise FROM entries WHERE debit_paise>0").fetchone()[0], 125000)
+            with self.assertRaises(UserError):
+                ut.import_xml(c2, b'<?xml version="1.0"?><!DOCTYPE x [<!ENTITY a "b">]><ENVELOPE/>')
+        finally:
+            c2.close()
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)
