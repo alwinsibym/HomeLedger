@@ -697,5 +697,40 @@ class TestGST(Base):
         self.assertEqual(len(r1["b2c"]), 1); self.assertEqual(r1["hsn"][0]["taxable"], 100000)
 
 
+class TestTDS(Base):
+    def test_tds_flow(self):
+        from homeledger import tds
+        info = tds.setup(self.c)
+        self.assertGreaterEqual(len(info["natures"]), 8)
+        contr = next(n for n in info["natures"] if n["code"] == "1023")["id"]
+        party = sv.save_ledger(self.c, {"name": "Contractor Ram", "group_id": self.c.execute("SELECT id FROM acct_groups WHERE code='CREDITORS'").fetchone()[0]})
+        party = party["id"] if isinstance(party, dict) else party
+        tds.save_pan(self.c, {"ledger_id": party, "pan": "ABCDE1234F"})
+        with self.assertRaises(UserError): tds.save_pan(self.c, {"ledger_id": party, "pan": "BAD"})
+        a = tds.compute(self.c, contr, party, 2000000, "2026-05-01")         # 20,000: below both limits
+        self.assertFalse(a["liable"])
+        b = tds.compute(self.c, contr, party, 5000000, "2026-05-01")         # 50,000 > 30,000 single limit: 1%
+        self.assertEqual((b["liable"], b["tax_paise"]), (True, 50000))
+        nopan = tds.compute(self.c, contr, self.L["Cash"], 5000000, "2026-05-01")
+        self.assertEqual(nopan["rate_bp"], 2000)
+        lid = info["ledger_id"]
+        lines = [{"ledger_id": self.L["Groceries & Provisions"], "side": "Dr", "amount": "50000.00"},
+                 {"ledger_id": party, "side": "Cr", "amount": "49500.00"}, {"ledger_id": lid, "side": "Cr", "amount": "500.00"}]
+        rec = {"nature_id": contr, "party": party, "base_paise": 5000000, "taxed_base_paise": 5000000, "rate_bp": 100, "tax_paise": 50000}
+        with self.assertRaises(UserError):
+            sv.save_voucher(self.c, {"vtype": "Journal", "date": "2026-05-01", "lines": lines, "tds": dict(rec, tax_paise=40000)})
+        v = sv.save_voucher(self.c, {"vtype": "Journal", "date": "2026-05-01", "lines": lines, "tds": rec})
+        self.assertEqual(v["tds"]["tax_paise"], 50000)
+        st = tds.statement(self.c, "2026-04-01", "2027-03-31")
+        self.assertEqual(st["total_tax"], 50000)
+        tds.save_challan(self.c, {"paid_on": "2026-06-05", "for_month": "2026-05", "amount": "500", "bsr": "0510308"})
+        d = tds.deposits(self.c, "2026-12-01")
+        self.assertEqual((d["months"][0]["balance_paise"], d["months"][0]["status"]), (0, "Paid"))
+        self.assertEqual(tds._due("2027-03"), "2027-04-30")
+        # a second payment makes the yearly limit (1,00,000) cross: earlier untaxed money is caught up
+        c2 = tds.compute(self.c, contr, party, 5200000, "2026-06-01")
+        self.assertTrue(c2["liable"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)

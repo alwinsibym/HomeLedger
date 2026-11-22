@@ -758,6 +758,48 @@ def r_gst_compute(app, q, b):          # only calculates; nothing is saved
         c.close()
 
 
+def _tds():
+    from . import tds
+    return tds
+
+
+@route(GET, "/api/tds/setup")
+def r_tds_setup(app, q, b):
+    with app.lock:
+        c = app.conn()
+        try:
+            return _tds().setup(c)
+        finally:
+            c.close()
+
+
+GET["/api/tds/statement"] = _reader(lambda c, q: _tds().statement(c, parse_iso(q.get("from")), parse_iso(q.get("to"))))
+POST["/api/tds/nature/save"] = _writer(lambda c, b: _tds().save_nature(c, b))
+POST["/api/tds/pan/save"] = _writer(lambda c, b: _tds().save_pan(c, b))
+POST["/api/tds/challan/save"] = _writer(lambda c, b: _tds().save_challan(c, b))
+POST["/api/tds/challan/delete"] = _writer(lambda c, b: _tds().delete_challan(c, b.get("id")))
+
+
+@route(GET, "/api/tds/deposits")
+def r_tds_deposits(app, q, b):
+    c = app.conn()
+    try:
+        return _tds().deposits(c, app.today())
+    finally:
+        c.close()
+
+
+@route(POST, "/api/tds/compute")
+def r_tds_compute(app, q, b):          # calculates only; nothing is saved
+    from .money import parse_amount
+    c = app.conn()
+    try:
+        return _tds().compute(c, b.get("nature_id"), b.get("party"), parse_amount(b.get("base"), "Amount"), parse_iso(b.get("date")),
+                              b.get("voucher_id"), b.get("rate"))
+    finally:
+        c.close()
+
+
 @route(GET, "/api/tallyxml")
 def r_tally_export(app, q, b):
     from . import utilities as ut

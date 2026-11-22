@@ -39,6 +39,7 @@ HL.menus = (() => {
       ["i", "X", "Price Lists", "Rates by price level and date", go("prices")],
       ["i", "M", "Bills of Material", "What a product is made from", go("boms")],
       ["i", "S", "GST Setup", "Registration, state, tax ledgers", go("gstsetup")],
+      ["i", "D", "TDS Setup", "Natures of payment, rates, limits", go("tdssetup")],
       ["i", "O", "Opening Balances", "Start-up cash, bank, loans", go("openings")],
       ["i", "I", "Company Info", "Name and books beginning date (F3)", go("company")]] },
     m_groups: cad("Groups", "groups"), m_ledgers: cad("Ledgers", "ledgers"), m_cc: cad("Cost Centres", "activities"),
@@ -84,6 +85,8 @@ HL.menus = (() => {
       ["i", "O", "Outstandings: Receivable", "Who owes you, with ageing", go("receivables")],
       ["i", "Y", "Outstandings: Payable", "Whom you owe, with ageing", go("payables")],
       ["i", "A", "Ratio Analysis", "Working capital, current ratio, profit %", go("ratios")],
+      ["i", "D", "TDS Statement", "Tax deducted, party by party", go("tdsstatement")],
+      ["i", "U", "TDS Deposits", "Deducted, deposited, due dates", go("tdsdeposits")],
       ["i", "H", "GST Summary", "Output tax, input credit, net payable", go("gstsummary")],
       ["i", "J", "GSTR-1 Lists", "B2B, B2C, credit notes, HSN summary", go("gstr1")],
       ["i", "M", "More Reports", "Group Summary, Fund Flow, Budgets, Interest, Scenarios", menu("more")]] },
@@ -470,7 +473,10 @@ HL.screens.voucher = {
       const hasItems = v && v.items.length;
       itemsBox = h("details", { class: "panel", style: "margin-top:.8rem", open: !!hasItems }, h("summary", {}, "Stock items in this " + vtype.toLowerCase() + " (optional)"), itemsTable.el);
     }
-    body.append(tbl, addBtn, totalBox, itemsBox, metaRow, h("label", { class: "f", style: "margin-top:.6rem" }, "Narration", narr),
+    S.tds = v && v.tds ? v.tds : null;
+    const tdsBtn = ["Journal", "Payment", "Purchase"].includes(vtype) ? h("button", { class: "btn stop", type: "button", style: "margin:.5rem 0 0 .5rem", title: "Deduct TDS on this payment and add the 'TDS Payable' line",
+      onclick: () => mode === "simple" ? say("Switch to double entry (F12 Configure > Entry mode) to deduct TDS.", "err") : HL.tdsDialog({ rows, S, recalc, addRow, vtype, voucherId: v ? v.id : 0, parse }) }, "Add TDS") : "";
+    body.append(tbl, h("div", {}, addBtn, tdsBtn), totalBox, itemsBox || "", metaRow, h("label", { class: "f", style: "margin-top:.6rem" }, "Narration", narr),
       h("p", { class: "hint" }, "Tip: Enter moves to the next box. After the last amount, Enter adds another line; Enter on the Narration saves (or press Ctrl+A)."));
     if (!isNew) {
       body.append(h("p", { class: "hint" }, "Entered " + v.created_at.slice(0, 16) + (v.updated_at !== v.created_at ? " · last changed " + v.updated_at.slice(0, 16) : "") + (v.status === "cancelled" ? " · CANCELLED" : "")));
@@ -502,7 +508,7 @@ HL.screens.voucher = {
           const t = lines.reduce((s, l) => s + Math.round(parseFloat(l.amount) * 100), 0);
           lines.push({ ledger_id: acct.value, side: vtype === "Receipt" ? "Dr" : "Cr", amount: (t / 100).toFixed(2) });
         }
-        const res = await HL.post("/api/voucher/save", { id: isNew ? undefined : v.id, vtype, date: S.date, narration: narr.value, status: S.status, ref: refInp.value, date_approx: approx.checked, lines, items: itemsTable ? itemsTable.get() : undefined, gst: itemsTable && HL.gstCfg && HL.gstCfg.on ? S.gst : undefined, gst_party: S.gstParty || (S.gst && lines.find(l => HL.isParty(l.ledger_id)) || {}).ledger_id,
+        const res = await HL.post("/api/voucher/save", { id: isNew ? undefined : v.id, vtype, date: S.date, narration: narr.value, status: S.status, ref: refInp.value, date_approx: approx.checked, lines, items: itemsTable ? itemsTable.get() : undefined, tds: S.tds || undefined, gst: itemsTable && HL.gstCfg && HL.gstCfg.on ? S.gst : undefined, gst_party: S.gstParty || (S.gst && lines.find(l => HL.isParty(l.ledger_id)) || {}).ledger_id,
           meta: { inst_no: mNo.value, inst_date: mDt.value.trim() ? (parseDateInput(mDt.value, S.date) || (() => { throw new Error("Please type the cheque date like 15-11-2026."); })()) : null, bank_name: mBk.value, post_dated: mPd.checked, class_name: clsSel.value } });
         S.dirty = false; HL.S.lastVoucherDate = S.date; if (acct && acct.value) HL.S.lastAcct = acct.value;
         say(`${vtype} no. ${res.number} saved (${rs(res.total_paise)}).`, "ok");

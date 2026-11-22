@@ -9,7 +9,7 @@ from pathlib import Path
 
 from .errors import CorruptDatabase, UserError
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 SCHEMA_V4 = """
 CREATE TABLE IF NOT EXISTS bank_clearing (
@@ -155,6 +155,62 @@ SCHEMA_V11 = (
     )""",
     "CREATE INDEX IF NOT EXISTS ix_gst_lines_voucher ON gst_lines(voucher_id)",
 )
+
+
+SCHEMA_V12 = (
+    """CREATE TABLE IF NOT EXISTS tds_nature (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        section TEXT NOT NULL DEFAULT '',
+        code TEXT NOT NULL DEFAULT '',
+        rate_bp INTEGER NOT NULL CHECK (rate_bp >= 0 AND rate_bp <= 10000),
+        single_paise INTEGER NOT NULL DEFAULT 0,
+        annual_paise INTEGER NOT NULL DEFAULT 0,
+        is_active INTEGER NOT NULL DEFAULT 1
+    )""",
+    """CREATE TABLE IF NOT EXISTS tds_party (
+        ledger_id INTEGER PRIMARY KEY REFERENCES ledgers(id) ON DELETE CASCADE,
+        pan TEXT NOT NULL DEFAULT ''
+    )""",
+    """CREATE TABLE IF NOT EXISTS tds_lines (
+        id INTEGER PRIMARY KEY,
+        voucher_id INTEGER NOT NULL REFERENCES vouchers(id) ON DELETE CASCADE,
+        party_ledger_id INTEGER NOT NULL REFERENCES ledgers(id),
+        nature_id INTEGER NOT NULL REFERENCES tds_nature(id),
+        base_paise INTEGER NOT NULL,
+        taxed_base_paise INTEGER NOT NULL,
+        rate_bp INTEGER NOT NULL,
+        tax_paise INTEGER NOT NULL
+    )""",
+    "CREATE INDEX IF NOT EXISTS ix_tds_lines_voucher ON tds_lines(voucher_id)",
+    """CREATE TABLE IF NOT EXISTS tds_challans (
+        id INTEGER PRIMARY KEY,
+        paid_on TEXT NOT NULL,
+        for_month TEXT NOT NULL,
+        bsr TEXT NOT NULL DEFAULT '',
+        serial TEXT NOT NULL DEFAULT '',
+        amount_paise INTEGER NOT NULL CHECK (amount_paise > 0),
+        interest_paise INTEGER NOT NULL DEFAULT 0,
+        note TEXT NOT NULL DEFAULT ''
+    )""",
+)
+TDS_SEED = (
+    ("Contractor: individual / HUF payee", "194C", "1023", 100, 3000000, 10000000),
+    ("Contractor: any other payee", "194C", "1024", 200, 3000000, 10000000),
+    ("Professional fees", "194J(b)", "1027", 1000, 0, 5000000),
+    ("Technical fees", "194J(a)", "1026", 200, 0, 5000000),
+    ("Commission / brokerage", "194H", "1006", 200, 0, 2000000),
+    ("Rent: land, building, furniture", "194I(b)", "1009", 1000, 5000000, 0),
+    ("Rent: plant and machinery", "194I(a)", "1008", 200, 5000000, 0),
+    ("Interest other than on securities", "194A", "1022", 1000, 0, 1000000),
+)
+
+
+def apply_v12(conn):
+    for stmt in SCHEMA_V12:
+        conn.execute(stmt)
+    if conn.execute("SELECT COUNT(*) FROM tds_nature").fetchone()[0] == 0:
+        conn.executemany("INSERT INTO tds_nature(name, section, code, rate_bp, single_paise, annual_paise) VALUES (?,?,?,?,?,?)", TDS_SEED)
 
 
 def apply_v11(conn):
@@ -538,6 +594,7 @@ def _create_fresh(path, today=None) -> None:
             apply_v9(conn)
             apply_v10(conn)
             apply_v11(conn)
+            apply_v12(conn)
             _seed(conn, today or dt.date.today())
             conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     finally:
@@ -666,6 +723,8 @@ def init_database(path, log=None) -> None:
                     apply_v10(conn)
                 if ver < 11:
                     apply_v11(conn)
+                if ver < 12:
+                    apply_v12(conn)
                 bad = conn.execute("PRAGMA foreign_key_check").fetchall()
                 if bad:
                     raise sqlite3.IntegrityError("upgrade check failed")

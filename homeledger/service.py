@@ -394,7 +394,12 @@ def get_voucher(conn, vid: int) -> dict:
             "narration": v["narration"], "ref": v["ref"], "date_approx": bool(v["date_approx"]),
             "status": v["status"], "created_at": v["created_at"], "updated_at": v["updated_at"],
             "lines": lines, "total_paise": total, "meta": get_meta(conn, vid), "bills": get_bills(conn, vid),
-            "items": _vitems(conn, vid), "gst": _gst_of(conn, vid)}
+            "items": _vitems(conn, vid), "gst": _gst_of(conn, vid), "tds": _tds_of(conn, vid)}
+
+
+def _tds_of(conn, vid: int):
+    from . import tds
+    return tds.get_voucher_tds(conn, vid)
 
 
 def _gst_of(conn, vid: int):
@@ -545,9 +550,10 @@ def save_voucher(conn, p: dict) -> dict:
         _verify_balanced(conn, vid)
         conn.execute("DELETE FROM bill_refs WHERE voucher_id=?", (vid,))
         _save_bills(conn, vid, d)
-        from . import inventory as inv, gst
+        from . import inventory as inv, gst, tds
         inv.save_voucher_items(conn, vid, d["vtype"], d["vdate"], p.get("items"))
         gst.save_voucher_gst(conn, vid, d["vtype"], p.get("gst_party") or None, p.get("gst"))
+        tds.save_voucher_tds(conn, vid, d["vdate"], p.get("tds"))
         if "meta" in p:
             _save_meta(conn, vid, p.get("meta"), d["vdate"])
         after = get_voucher(conn, vid)
