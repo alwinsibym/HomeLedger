@@ -75,7 +75,7 @@ def lists(conn) -> dict:
 
 def list_items(conn) -> list:
     return [dict(r) for r in conn.execute(
-        """SELECT id, name, unit, opening_qty_milli, opening_value_paise, group_id, category_id, valuation, std_rate_paise, track_batches
+        """SELECT id, name, unit, opening_qty_milli, opening_value_paise, group_id, category_id, valuation, std_rate_paise, track_batches, reorder_milli
            FROM stock_items ORDER BY name COLLATE NOCASE""")]
 
 
@@ -103,6 +103,9 @@ def save_item(conn, d: dict) -> dict:
         if v and not conn.execute(f"SELECT 1 FROM {tbl} WHERE id=?", (v,)).fetchone():
             raise UserError("The chosen stock group or category no longer exists.")
     tb = 1 if d.get("track_batches") else 0
+    reorder = parse_qty(d.get("reorder_qty")) if str(d.get("reorder_qty") or "").strip() else 0
+    if reorder < 0:
+        raise UserError("The low-stock level cannot be negative.")
     with dbm.write_tx(conn):
         dup = conn.execute("SELECT id FROM stock_items WHERE name=? COLLATE NOCASE", (name,)).fetchone()
         if dup and dup["id"] != sid:
@@ -111,13 +114,13 @@ def save_item(conn, d: dict) -> dict:
             if not conn.execute("SELECT 1 FROM stock_items WHERE id=?", (sid,)).fetchone():
                 raise UserError("That stock item no longer exists.")
             conn.execute("""UPDATE stock_items SET name=?, unit=?, opening_qty_milli=?, opening_value_paise=?, group_id=?, category_id=?,
-                            valuation=?, std_rate_paise=?, track_batches=? WHERE id=?""",
-                         (name, unit, qty, val, gid, cid, valuation, std, tb, sid))
+                            valuation=?, std_rate_paise=?, track_batches=?, reorder_milli=? WHERE id=?""",
+                         (name, unit, qty, val, gid, cid, valuation, std, tb, reorder, sid))
             dbm.audit(conn, "alter", "stock_item", sid, name)
         else:
             sid = conn.execute("""INSERT INTO stock_items(name, unit, opening_qty_milli, opening_value_paise, group_id, category_id, valuation,
-                                  std_rate_paise, track_batches, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)""",
-                               (name, unit, qty, val, gid, cid, valuation, std, tb, dbm.now_iso())).lastrowid
+                                  std_rate_paise, track_batches, reorder_milli, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                               (name, unit, qty, val, gid, cid, valuation, std, tb, reorder, dbm.now_iso())).lastrowid
             dbm.audit(conn, "create", "stock_item", sid, name)
     return {"id": sid}
 

@@ -806,3 +806,25 @@ class TestBulkAndAttach(Base):
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)
+
+
+class TestTemplatesInsights(Base):
+    def test_template_repeat_and_alerts(self):
+        from homeledger import templates as tp, insights as ins
+        rent = self.L["Groceries & Provisions"]
+        v = self.pay("2026-05-31", "Groceries & Provisions", 5000)
+        tp.save_from_voucher(self.c, {"voucher_id": v["id"], "name": "Monthly rent", "repeat_every": "monthly", "next_due": "2026-06-30"})
+        due = tp.due(self.c, "2026-08-31")
+        self.assertEqual([d["date"] for d in due], ["2026-06-30", "2026-07-30", "2026-08-30"])
+        with self.assertRaises(UserError):
+            tp.run_due(self.c, {"items": [{"template_id": due[0]["template_id"], "date": "2026-07-30"}]}, "2026-08-31")
+        r = tp.run_due(self.c, {"items": [{"template_id": d["template_id"], "date": d["date"]} for d in due]}, "2026-08-31")
+        self.assertEqual(r["made"], 3)
+        self.assertEqual(tp.due(self.c, "2026-08-31"), [])
+        self.assertEqual(tp._next("2026-01-31", "monthly"), "2026-02-28")
+        s = ins.spending(self.c, "2026-04-01", "2027-03-31")
+        self.assertEqual(s["total"], 5000 * 100 * 4)
+        y = ins.yoy(self.c, "2026-08-01")
+        self.assertEqual(sum(m["expense"] for m in y["this_year"]), 5000 * 100 * 4)
+        self.assertIsInstance(ins.alerts(self.c, "2026-08-31"), list)
+        tp.delete(self.c, tp.listing(self.c)[0]["id"])

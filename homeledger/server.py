@@ -1073,3 +1073,26 @@ def create_server(app: App, port: int) -> ThreadingHTTPServer:
     httpd = QuietServer(("127.0.0.1", port), make_handler(app))
     app.httpd = httpd
     return httpd
+
+
+# ---- templates, repeats, insights --------------------------------------------------------------------
+def _tp():
+    from . import templates
+    return templates
+
+
+def _ins():
+    from . import insights
+    return insights
+
+
+GET["/api/templates"] = _reader(lambda c, q: {"rows": _tp().listing(c)})
+GET["/api/template"] = _reader(lambda c, q: _tp().as_voucher(c, _int(q, "id", True), dt_today()))
+POST["/api/template/save"] = _writer(lambda c, b: _tp().save_from_voucher(c, b))
+POST["/api/template/repeat"] = _writer(lambda c, b: _tp().set_repeat(c, b))
+POST["/api/template/delete"] = _writer(lambda c, b: _tp().delete(c, int(b.get("id") or 0)) or {"ok": True})
+GET["/api/repeats/due"] = _reader(lambda c, q: {"rows": _tp().due(c, dt_today())})
+POST["/api/repeats/run"] = _writer(lambda c, b: _tp().run_due(c, b, dt_today()))
+GET["/api/insights/spending"] = _reader(lambda c, q: _ins().spending(c, q.get("from"), q.get("to"), q.get("nature") or "expense"))
+GET["/api/insights/yoy"] = _reader(lambda c, q: _ins().yoy(c, q.get("on") or dt_today()))
+GET["/api/alerts"] = _reader(lambda c, q: {"rows": _ins().alerts(c, dt_today())})

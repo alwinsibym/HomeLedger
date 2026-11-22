@@ -71,6 +71,7 @@ HL.menus = (() => {
       ["i", "B", "Day Book", "All entries day by day", go("daybook")],
       ["h", "Quick ways to enter"],
       ["i", "Q", "Quick Entry", "Many payments and receipts, like the notebook", go("quickentry")],
+      ["i", "T", "Templates & Repeats", "Saved vouchers and entries that repeat (rent, EMI...)", go("templates")],
       ["i", "I", "Bill Inbox", "Photos of bills, entered beside the picture", go("billinbox")]] },
     utilities: { title: "Utilities", items: [
       ["i", "B", "Backup & Restore", "Safe copies of your books", util("backup")],
@@ -82,6 +83,9 @@ HL.menus = (() => {
       ["i", "Y", "Security", "Sign-in and users", util("security")],
       ["i", "A", "Audit Trail", "Who changed what", util("audit")]] },
     reports: { title: "Reports", items: [
+      ["i", "N", "Needs Attention", "Overdue bills, TDS due, low stock, unusual entries", go("alerts")],
+      ["i", "W", "Spending Analysis", "By account, compared with last year", go("spending")],
+      ["i", "X", "Year on Year", "This year month by month against last year", go("yoy")],
       ["i", "B", "Balance Sheet", "What you own and owe", go("bs")],
       ["i", "P", "Profit & Loss A/c", "Income less spending", go("pnl")],
       ["i", "T", "Trial Balance", "All ledgers", go("tb")],
@@ -230,6 +234,7 @@ HL.screens.dashboard = {
       kpi("Spending (period)", rs(pe, 0), periodText()),
       kpi("Saved (period)", rs(pi - pe, 0), pi - pe >= 0 ? "Income more than spending" : "Spending more than income", pi - pe < 0 ? "neg" : "pos"),
       kpi("Loans to repay", rs(c.loans, 0), c.money_lent ? "Money to receive: " + rs(c.money_lent, 0) : ""));
+    try { const al = await HL.get("/api/alerts"); if (al.rows.length) grid.append(h("div", { class: "card c12" }, h("h3", {}, "Needs attention (" + al.rows.length + ")"), HL.alertList(al.rows, 5), al.rows.length > 5 ? h("button", { class: "btn", style: "margin-top:.5rem", onclick: () => HL.go("alerts") }, "See all " + al.rows.length) : "")); } catch (e) { /* alerts are optional */ }
     if (ins.length) grid.append(h("div", { class: "card c12" }, h("h3", {}, "What stands out"), h("ul", { class: "insights" }, ins.map(([k, t]) => h("li", { class: k }, t)))));
     const months = d.months, lab = m => monthLabel(m.month), lng = m => monthLabel(m.month, true);
     const drillMonth = (dd) => { const ym = dd.ym; const [y, m] = ym.split("-"); HL.S.period = { id: "custom", from: ym + "-01", to: lastDayOfMonth(+y, +m) }; HL.go("daybook"); };
@@ -289,7 +294,8 @@ HL.screens.voucher = {
     await loadMasters();
     let v = null;
     const srcId = params.id || params.copy_id;
-    if (srcId) { v = await HL.get("/api/voucher", { id: srcId }); params = Object.assign({}, params, { vtype: v.vtype }); HL.cur.params = params; }
+    if (params.tpl_id) { v = await HL.get("/api/template", { id: params.tpl_id }); params = Object.assign({}, params, { vtype: v.vtype }); HL.cur.params = params; }
+    else if (srcId) { v = await HL.get("/api/voucher", { id: srcId }); params = Object.assign({}, params, { vtype: v.vtype }); HL.cur.params = params; }
     const isNew = !params.id;   // a copy is a new voucher that starts from an old one
     const vtype = params.vtype;
     if (["Sales Order", "Purchase Order", "Delivery Note", "Receipt Note", "Stock Journal"].includes(vtype)) { await HL.stock.load(); return HL.screens.stockvoucher.render(sc, params, params.id ? v : null); }
@@ -546,6 +552,8 @@ HL.screens.voucher = {
     };
     const keys = [{ k: "Ctrl+A", label: "Accept (save)", fn: save }, { k: "Ctrl+L", label: "Optional voucher", fn: toggleOpt }, { k: "Esc", label: "Back", fn: HL.back }, "sep"];
     if (isNew) for (const t of ["Contra", "Payment", "Receipt", "Journal", "Sales", "Purchase", "Credit Note", "Debit Note", "Memorandum", "Reversing Journal"]) keys.push({ k: VOUCHER_KEYS[t], label: t, fn: sw(t) });
+    keys.push({ k: "Alt+T", label: "Templates", fn: () => HL.go("templates") });
+    if (!isNew && ["Payment", "Receipt", "Contra", "Journal"].includes(vtype)) keys.push({ k: "", label: "Save as template", fn: () => HL.templateDialog(v) });
     if (!isNew) {
       keys.push({ k: "Alt+2", label: "Duplicate", fn: () => { if (!S.dirty || confirm("Leave without saving?")) { S.dirty = false; HL.go("voucher", { copy_id: v.id }, { replace: true }); } } });
       const toggleCancel = async () => {

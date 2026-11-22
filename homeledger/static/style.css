@@ -340,3 +340,11 @@ table.items input[type=text] { min-width: 0; }
 .inbox-item{width:70px;height:70px;flex:0 0 auto;border:2px solid transparent;background:#f3f5f8;padding:2px;display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer}
 .inbox-item.on{border-color:#0b4a8f}
 @media (max-width:900px){.inbox{grid-template-columns:1fr}}
+
+/* alerts */
+.alerts { list-style: none; margin: 0; padding: 0; display: grid; gap: .4rem; }
+.alerts .al { display: flex; align-items: center; gap: .6rem; padding: .5rem .7rem; background: var(--card, #fff); border: 1px solid var(--line, #d6dbe4); border-radius: 8px; }
+.alerts .al .tx { flex: 1; }
+.alerts .al .dot { width: .7rem; height: .7rem; border-radius: 50%; background: var(--s1); flex: none; }
+.alerts .al.red .dot { background: #c62828; }
+.alerts .al.amber .dot { background: #d98a00; }
