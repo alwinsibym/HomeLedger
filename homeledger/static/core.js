@@ -301,7 +301,20 @@ function periodText() { const P = getPeriod(); return showDate(P.from) + " to " 
 
 /* ---------- navigation ---------- */
 HL.keys = [];                        // current right-hand key panel: [{k:'F5', label, fn, disabled}] | 'sep'
+/* Every screen that shows a table gets "Save as Excel": all tables on the screen go into one CSV file that Excel opens. */
+HL.exportScreen = function () {
+  const tables = [...document.querySelectorAll("#screen table.tbl, main table.tbl")].filter((t, i, a) => a.indexOf(t) === i);
+  const sides = [...new Set([...document.querySelectorAll("#screen .ln")].map(l => l.parentElement))];
+  if (!tables.length && !sides.length) { say("There is no table on this screen to save.", "err"); return; }
+  const num = x => { const t = x.replace(/\u20b9/g, "").replace(/\u00a0/g, " ").trim(); return /^-?[\d,]+(\.\d+)?$/.test(t) && /\d/.test(t) ? t.replace(/,/g, "") : x.trim(); };
+  const title = (document.querySelector("h1.title") || {}).textContent || "report", sub = (document.querySelector("p.sub") || {}).textContent || "";
+  const rows = [[title], sub ? [sub] : [], []].filter(r => r.length || true);
+  tables.forEach(t => { t.querySelectorAll("tr").forEach(tr => rows.push([...tr.children].flatMap(c => { const r = [num(c.textContent)]; for (let i = 1; i < (c.colSpan || 1); i++) r.push(""); return r; }))); rows.push([]); });
+  sides.forEach(p => { const hd = p.querySelector("h2,h3,h4,.hd"); if (hd) rows.push([hd.textContent.trim()]); p.querySelectorAll(".ln").forEach(l => rows.push([...l.children].map(c => num(c.textContent)))); rows.push([]); });
+  exportCsv(title.replace(/[^\w ()-]+/g, "").trim().replace(/\s+/g, "_") + ".csv", rows[0], rows.slice(1));
+};
 HL.setKeys = function (list) {
+  if (list.length && document.querySelector("#screen table.tbl, #screen .ln") && !list.some(k => k !== "sep" && /Export|Excel/.test(k.label || ""))) { list = list.concat([{ k: "", label: "Save as Excel", fn: () => HL.exportScreen() }]); }
   HL.keys = list;
   const box = $("#keys"); box.replaceChildren();
   for (const k of list) {

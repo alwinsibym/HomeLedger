@@ -192,3 +192,39 @@ HL.billsDialog = async (r, voucherId, getSide) => {
   modal({ title: "Bill allocation", body, buttons: [{ label: "Cancel", onclick: m => m.close() }, { label: "Clear", onclick: m => { r.bills = []; r.showBb(); m.close(); } },
     { label: "Accept", cls: "primary", onclick: m => { r.bills = rows.filter(b => b.ref.trim() || b.amount).map(b => ({ ref: b.ref.trim(), kind: b.kind, amount: b.amount, due: b.due || null })); r.showBb(); m.close(); } }] });
 };
+
+
+/* ---- party statement (account statement to send to a customer / supplier) and payment reminder letter ---- */
+HL.printStatement = async (ledgerId, from, to) => {
+  const r = await HL.get("/api/ledger_statement", { ledger_id: ledgerId, from, to });
+  const co = HL.S.status.company, q = n => (n / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 });
+  const bal = n => q(Math.abs(n)) + (n > 0 ? " Dr" : n < 0 ? " Cr" : "");
+  const rows = r.rows.map(x => `<tr><td>${showDate(x.vdate)}</td><td>${esc(x.vtype)} ${esc(x.number || "")}${x.narration ? "<br><small>" + esc(x.narration) + "</small>" : ""}</td><td class="r">${x.debit_paise ? q(x.debit_paise) : ""}</td><td class="r">${x.credit_paise ? q(x.credit_paise) : ""}</td><td class="r">${bal(x.balance)}</td></tr>`).join("");
+  const html = `<!doctype html><meta charset="utf-8"><title>Statement ${esc(r.name)}</title><style>
+    @page { size: A4; margin: 14mm } body { font: 13px Arial, sans-serif; color: #111 } h1 { font-size: 20px; margin: 0 } h2 { font-size: 15px; margin: 2px 0 4px }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px } th, td { border: 1px solid #888; padding: 4px 7px; text-align: left } th { background: #eee } .r { text-align: right } .tot td { font-weight: bold; background: #f5f5f5 } small { color: #555 }
+  </style><h1>${esc(co.name)}</h1><h2>Statement of Account: ${esc(r.name)}</h2><div>${showDate(from)} to ${showDate(to)}</div>
+  <table><thead><tr><th>Date</th><th>Particulars</th><th class="r">Debit</th><th class="r">Credit</th><th class="r">Balance</th></tr></thead><tbody>
+  <tr><td colspan="4"><b>Opening balance</b></td><td class="r">${bal(r.opening)}</td></tr>${rows}
+  <tr class="tot"><td colspan="2">Totals</td><td class="r">${q(r.total_dr)}</td><td class="r">${q(r.total_cr)}</td><td class="r">${bal(r.closing)}</td></tr></tbody></table>
+  <p>Closing balance: <b>${bal(r.closing)}</b></p><p>Please tell us if anything here does not match your records.</p>`;
+  HL.printHtml(html);
+};
+
+HL.printReminder = async (kind, ledgerId) => {
+  const o = await HL.get("/api/outstanding", { kind, to: todayIso() });
+  const x = o.rows.find(r => r.ledger_id === ledgerId);
+  if (!x) { say("Nothing is pending for this party.", "err"); return; }
+  const co = HL.S.status.company, q = n => (n / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 });
+  const bills = (x.bills || []).filter(b => b.pending !== 0).map(b => `<tr><td>${esc(b.ref)}</td><td>${b.due ? showDate(b.due) : ""}</td><td class="r">${q(Math.abs(b.pending))}</td></tr>`).join("");
+  const body = kind === "receivable"
+    ? `<p>Our records show that an amount of <b>Rs. ${q(x.due)}</b> is still pending from you as on ${showDate(todayIso())}.</p><p>We request you to arrange the payment at the earliest. If you have already paid, please ignore this letter and let us know the details so that we can update our books.</p>`
+    : `<p>This is to confirm the balance of <b>Rs. ${q(x.due)}</b> payable by us to you as on ${showDate(todayIso())}. Please let us know if your records differ.</p>`;
+  const html = `<!doctype html><meta charset="utf-8"><title>Letter ${esc(x.name)}</title><style>
+    @page { size: A4; margin: 20mm } body { font: 14px Arial, sans-serif; color: #111; line-height: 1.5 } h1 { font-size: 20px; margin: 0 0 24px } table { border-collapse: collapse; margin: 10px 0 } th, td { border: 1px solid #888; padding: 4px 10px } th { background: #eee } .r { text-align: right }
+  </style><h1>${esc(co.name)}</h1><div>Date: ${showDate(todayIso())}</div><p>To,<br><b>${esc(x.name)}</b></p>
+  <p><b>Subject: ${kind === "receivable" ? "Reminder for pending payment" : "Balance confirmation"}</b></p><p>Dear Sir / Madam,</p>${body}
+  ${bills ? `<table><thead><tr><th>Bill</th><th>Due date</th><th class="r">Amount (Rs.)</th></tr></thead><tbody>${bills}</tbody></table>` : ""}
+  <p>Thank you.</p><p style="margin-top:50px">For ${esc(co.name)}</p>`;
+  HL.printHtml(html);
+};

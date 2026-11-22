@@ -121,15 +121,16 @@ def alerts(conn, today: str) -> list:
                 add("stock", "amber", f"{r['name']} is low: {r['close_q'] / 1000:g} {r['unit']} left (alert at {lv / 1000:g}).", ["stocksummary", {}])
     # unusual entries in the last 30 days: far above the usual for that account, or the same amount entered twice
     since = (dt.date.fromisoformat(today) - dt.timedelta(days=30)).isoformat()
+    hist = {r["lid"]: (r["n"], r["a"]) for r in conn.execute(
+        """SELECT e.ledger_id lid, COUNT(*) n, AVG(e.debit_paise) a FROM entries e JOIN vouchers v ON v.id=e.voucher_id AND v.status='posted'
+           JOIN ledgers l ON l.id=e.ledger_id WHERE l.nature='expense' AND e.debit_paise>0 AND v.vdate<? GROUP BY e.ledger_id""", (since,))}
     for r in conn.execute(
             """SELECT v.id vid, v.vdate, v.vtype, l.name, e.debit_paise amt, l.id lid FROM entries e
                JOIN vouchers v ON v.id=e.voucher_id AND v.status='posted' JOIN ledgers l ON l.id=e.ledger_id
                WHERE l.nature='expense' AND e.debit_paise>0 AND v.vdate BETWEEN ? AND ?""", (since, today)):
-        h = conn.execute(
-            """SELECT COUNT(*) n, AVG(e.debit_paise) a FROM entries e JOIN vouchers v ON v.id=e.voucher_id AND v.status='posted'
-               WHERE e.ledger_id=? AND e.debit_paise>0 AND v.vdate<?""", (r["lid"], since)).fetchone()
-        if h["n"] >= 5 and h["a"] and r["amt"] >= 4 * h["a"] and r["amt"] >= 100000:
-            add("unusual", "amber", f"{r['vdate']}: {r['amt'] / 100:,.2f} on {r['name']} is over 4 times its usual amount ({h['a'] / 100:,.2f}).", ["voucher", {"id": r["vid"]}])
+        n, a = hist.get(r["lid"], (0, 0))
+        if n >= 5 and a and r["amt"] >= 4 * a and r["amt"] >= 100000:
+            add("unusual", "amber", f"{r['vdate']}: {r['amt'] / 100:,.2f} on {r['name']} is over 4 times its usual amount ({a / 100:,.2f}).", ["voucher", {"id": r["vid"]}])
     for r in conn.execute(
             """SELECT v.vdate, l.name, e.debit_paise amt, COUNT(DISTINCT v.id) n, MIN(v.id) vid FROM entries e
                JOIN vouchers v ON v.id=e.voucher_id AND v.status='posted' JOIN ledgers l ON l.id=e.ledger_id

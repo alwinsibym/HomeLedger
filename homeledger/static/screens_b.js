@@ -61,15 +61,27 @@ HL.screens.ledger = {
       r.rows.forEach(m => { const tr = h("tr", { class: "row", tabindex: "0", onclick: () => { const [y, mm] = m.month.split("-"); HL.S.period = { id: "custom", from: m.month + "-01", to: lastDayOfMonth(+y, +mm) }; HL.cur.params = Object.assign({}, params, { monthly: false }); HL.refresh(); } },
         h("td", {}, monthLabel(m.month, true)), h("td", { class: "r" }, m.n || ""), h("td", { class: "r" }, m.dr ? inr(m.dr) : ""), h("td", { class: "r" }, m.cr ? inr(m.cr) : ""), h("td", { class: "r" }, real ? bal(m.closing) : "")); rowKeys(tr); trs.push(tr); tb.append(tr); });
     } else {
-      r.rows.forEach(x => {
+      const mkRow = x => {
         const tr = h("tr", { class: "row", tabindex: "0", onclick: () => HL.go("voucher", { id: x.vid }) },
           h("td", {}, showDate(x.vdate) + (x.date_approx ? " ~" : "")),
           h("td", {}, (params.group_id ? x.ledger + " ← " : "") + (x.counter || "(opening entry)"), x.narration ? h("div", { class: "muted", style: "font-size:.85em" }, x.narration) : ""),
           h("td", {}, [x.cc, x.item ? x.item + (x.qty_milli ? " × " + qtyStr(x.qty_milli) + " " + (x.unit || "") : "") : ""].filter(Boolean).join(" · ")),
           h("td", {}, x.vtype), h("td", {}, x.number),
           h("td", { class: "r" }, x.debit_paise ? inr(x.debit_paise) : ""), h("td", { class: "r" }, x.credit_paise ? inr(x.credit_paise) : ""), h("td", { class: "r" }, real ? bal(x.balance) : ""));
-        rowKeys(tr); trs.push(tr); tb.append(tr);
-      });
+        rowKeys(tr); trs.push(tr); return tr;
+      };
+      // long statements (years of entries) are drawn in pages so the screen opens at once
+      const PAGE = 1500; let shown = 0, moreRow = null;
+      const draw = () => {
+        const end = Math.min(r.rows.length, shown + PAGE);
+        for (; shown < end; shown++) { const tr = mkRow(r.rows[shown]); if (moreRow) tb.insertBefore(tr, moreRow); else tb.append(tr); }
+        if (moreRow) { moreRow.remove(); moreRow = null; }
+        if (shown < r.rows.length) {
+          moreRow = h("tr", {}, h("td", { colspan: 8, style: "text-align:center" }, h("button", { class: "btn", type: "button", onclick: draw }, "Show the next " + Math.min(PAGE, r.rows.length - shown) + " of " + (r.rows.length - shown) + " remaining entries")));
+          tb.insertBefore(moreRow, tb.lastChild && tb.querySelector("tr.total") || null);
+        }
+      };
+      draw();
     }
     tb.append(h("tr", { class: "total" }, h("td", { colspan: monthly ? 2 : 5 }, "Totals for the period"), h("td", { class: "r" }, inr(r.total_dr)), h("td", { class: "r" }, inr(r.total_cr)), h("td", { class: "r" }, real ? bal(r.closing) : "")));
     if (real) tb.append(h("tr", { class: "total" }, h("td", { colspan: monthly ? 4 : 7 }, "Closing balance"), h("td", { class: "r" }, bal(r.closing))));
@@ -82,6 +94,7 @@ HL.screens.ledger = {
     if (trs[0]) trs[0].focus();
     HL.setKeys([BACK, { k: "", label: monthly ? "Show every entry" : "Monthly summary", fn: () => { HL.cur.params = Object.assign({}, params, { monthly: !monthly }); HL.refresh(); } }, "sep",
       { k: "", label: "Change account", fn: () => HL.go("ledgers_pick", {}, { replace: true }) },
+      ...(params.ledger_id && !params.group_id ? [{ k: "", label: "Print statement for party", fn: () => HL.printStatement(params.ledger_id, P.from, P.to) }] : []),
       { k: "", label: "Export to Excel (CSV)", fn: () => exportCsv(r.name + ".csv", ["Date", "Particulars", "Type", "No", "Debit", "Credit", "Balance"], r.rows.map(x => monthly ? [x.month, "", "", "", inr(x.dr), inr(x.cr), ""] : [x.vdate, x.counter || "", x.vtype, x.number, x.debit_paise ? inr(x.debit_paise) : "", x.credit_paise ? inr(x.credit_paise) : "", x.balance != null ? bal(x.balance) : ""])) }, printKey]);
   },
 };
@@ -357,7 +370,8 @@ function outstandingScreen(kind, title) {
       if (!r.rows.length) tb.append(h("tr", {}, h("td", { colspan: 7, class: "empty" }, "Nothing is pending.")));
       else tb.append(h("tr", { class: "total" }, h("td", {}, "Total"), h("td", {}), ...r.buckets.map(b => h("td", { class: "r" }, inr(b))), h("td", { class: "r" }, inr(r.total))));
       sc.replaceChildren(h("div", {}, h("h1", { class: "title" }, title), h("p", { class: "sub" }, "As on " + showDate(r.as_on) + " · Enter opens the ledger"), periodBar(() => HL.refresh()), t, h("p", { class: "hint" }, r.note)));
-      HL.setKeys([BACK]);
+      const focusedId = () => { const tr = document.activeElement && document.activeElement.closest && document.activeElement.closest("tr.row"); return tr ? r.rows[[...tr.parentElement.children].indexOf(tr)] : null; };
+      HL.setKeys([BACK, { k: "", label: kind === "receivable" ? "Reminder letter (select a party)" : "Balance letter (select a party)", fn: () => { const x = focusedId(); if (!x) { say("Click or arrow to a party first.", "err"); return; } HL.printReminder(kind, x.ledger_id); } }]);
       const f = $("tbody tr", sc); f && f.focus();
     },
   };
