@@ -18,6 +18,8 @@ HL.screens.guide = {
       if (s.image) card.append(h("img", { class: "guide-img", src: "/guide/" + s.image + ".png", alt: "Screenshot: " + s.title, loading: "lazy" }));
       body.append(card);
     });
+    body.prepend(await HL.lessonCards());
+    nav.prepend(h("a", { href: "#", onclick: ev => { ev.preventDefault(); jump("lessons"); } }, "Learn by doing"));
     nav.append(h("a", { href: "#", onclick: ev => { ev.preventDefault(); jump("keys"); } }, "Shortcut map"), h("a", { href: "#", onclick: ev => { ev.preventDefault(); jump("faq"); } }, "Questions and answers"));
     const keys = h("section", { class: "card guide-sec", id: "g-keys", tabindex: "-1" }, h("h2", {}, "Shortcut map"), h("p", {}, "Keys with a plus sign are pressed together, for example Ctrl+A means hold Ctrl and press A."));
     g.shortcuts.forEach(grp => { const [t, tb] = _tbl([grp.group, ""]); grp.rows.forEach(([k, d]) => tb.append(h("tr", {}, h("td", {}, h("kbd", {}, k)), h("td", {}, d)))); keys.append(t); });
@@ -52,6 +54,7 @@ HL.startTour = (force) => {
   const draw = () => { title.textContent = HL.TOUR[i][0]; txt.textContent = HL.TOUR[i][1]; dots.textContent = "Step " + (i + 1) + " of " + HL.TOUR.length; };
   m = modal({ title: "Quick tour", body, onclose: () => { try { localStorage.setItem("hl_tour_done", "1"); } catch (e) { } }, buttons: [
     { label: "Skip", onclick: () => done() },
+    { label: "Try it hands-on", onclick: () => { done(); HL.go("guide", { at: "lessons" }); } },
     { label: "Open the full guide", onclick: () => { done(); HL.go("guide"); } },
     { label: "Next", cls: "primary", onclick: () => { if (i < HL.TOUR.length - 1) { i++; draw(); if (i === HL.TOUR.length - 1) { const b = m.box.querySelector(".primary"); if (b) b.textContent = "Finish"; } } else done(); } }] });
   // modal buttons close the dialog by default; keep it open for Next

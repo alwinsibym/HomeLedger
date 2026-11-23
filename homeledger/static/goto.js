@@ -109,11 +109,12 @@ HL.openHelp = function () {
   // Shift+F1 and the Help menu: the short key list, with a way into the full guide
   HL._helpShort();
 };
-HL._helpShort = function () {
+HL._helpShort = async function () {
+  const here = HL.screenHelpBlock ? await HL.screenHelpBlock() : null;
   const rows = [["F5 / F6 / F4 / F7", "Payment / Receipt / Contra / Journal"], ["F8 / F9", "Sales / Purchase"], ["Alt+G", "Go To: jump to any screen, ledger or activity"], ["Ctrl+F", "Search entries"], ["Alt+F1", "Dashboard"],
     ["F3 / Alt+K", "Company info"], ["Ctrl+F8 / Ctrl+F9", "Credit Note / Debit Note"], ["Alt+Y", "Data: backup, health check, security"], ["Alt+E", "Export everything to Excel"], ["Ctrl+P / Alt+P", "Print this screen"], ["Ctrl+L / Alt+L", "Lock (when sign-in is on)"],
     ["Enter", "Accept and go to the next field"], ["Esc", "Go back"], ["Ctrl+A", "Accept (save) a voucher"]];
-  modal({ title: "Keys and help", wide: true, body: h("div", {}, h("table", { class: "tbl" }, h("tbody", {}, rows.map(([k, d]) => h("tr", {}, h("td", { style: "white-space:nowrap" }, h("b", {}, k)), h("td", {}, d))))),
+  modal({ title: "Keys and help", wide: true, body: h("div", {}, here ? h("div", { class: "card", style: "margin-bottom:.8rem" }, here) : "", h("table", { class: "tbl" }, h("tbody", {}, rows.map(([k, d]) => h("tr", {}, h("td", { style: "white-space:nowrap" }, h("b", {}, k)), h("td", {}, d))))),
     h("p", { class: "hint" }, "HomeLedger works only on this computer and does not use the internet. Your data is saved after every entry and backed up automatically.")), buttons: [{ label: "Open the full guide", onclick: m => { m.close(); HL.go("guide"); } }, { label: "Quick tour", onclick: m => { m.close(); HL.startTour(true); } }, { label: "Close", cls: "primary" }] });
 };
 

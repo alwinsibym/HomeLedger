@@ -839,3 +839,17 @@ class TestGuide(unittest.TestCase):
         for s in data["sections"]:
             if s.get("image"):
                 self.assertTrue((g / (s["image"] + ".png")).is_file(), s["image"])
+
+    def test_lessons_and_help_are_consistent(self):
+        import json, re
+        g = Path(__file__).resolve().parent.parent / "homeledger" / "static"
+        les = json.loads((g / "guide" / "lessons.json").read_text(encoding="utf-8"))
+        js = (g / "screens_n.js").read_text(encoding="utf-8")
+        ids = set(re.findall(r'\{ id: "([a-z]\d)"', js))
+        self.assertTrue(ids)
+        self.assertEqual(ids, set(les["steps"]), "every lesson step needs text, and every text a step")
+        for k in ("first", "see", "notebook", "safe"):
+            self.assertIn(k, les["lessons"])
+        sh = json.loads((g / "guide" / "screen_help.json").read_text(encoding="utf-8"))
+        for k, v in sh.items():
+            self.assertTrue(v["en"]["what"], k)

@@ -1,0 +1,47 @@
+{
+ "lessons": {
+  "first": {"title": {"en": "Write your first payment"}, "about": {"en": "Enter a payment, save it, and find it again. About 3 minutes."}},
+  "see": {"title": {"en": "See where the money went"}, "about": {"en": "Dashboard, spending analysis, alerts and Excel. About 2 minutes."}},
+  "notebook": {"title": {"en": "Notebook and bills"}, "about": {"en": "Quick Entry, Bill Inbox and Excel import. About 2 minutes."}},
+  "safe": {"title": {"en": "Keep your books safe"}, "about": {"en": "Make a backup, choose a second copy, sign-in and health check. About 2 minutes."}}
+ },
+ "ui": {
+  "practice_banner": {"en": "PRACTICE BOOKS: nothing you do here touches your real accounts."},
+  "back_real": {"en": "Back to my real books"},
+  "stop": {"en": "Stop lesson"}, "skip": {"en": "Skip this step"}, "next": {"en": "Next"}, "done": {"en": "Finish"},
+  "showme": {"en": "Show me"}, "good": {"en": "Good!"}, "step": {"en": "Step"}, "of": {"en": "of"},
+  "preparing": {"en": "Getting the practice books ready..."},
+  "owner_only": {"en": "Only the Owner can start a hands-on lesson, because it uses a separate set of practice books."},
+  "end_title": {"en": "Lesson complete"},
+  "end_text": {"en": "Well done. You can try another lesson, stay here a little longer to explore, or go back to your real books. The practice books are deleted when you go back."},
+  "another": {"en": "Another lesson"}, "stay": {"en": "Stay and explore"}
+ },
+ "steps": {
+  "f1": {"en": "Welcome. I have made a separate set of practice books for you, with a few sample accounts. Nothing here touches your real accounts. I will take you to each screen. Press Next."},
+  "f2": {"en": "This is the Payment voucher. It is what F5 opens. Money paid out is always a Payment. Press Next."},
+  "f3": {"en": "First, where did the money come from? It says Cash, so this payment comes out of the cash in hand. If you paid from the bank, you would click here and choose the bank account. Press Next."},
+  "f4": {"en": "Now, what was the money spent on? Type Groc and press Enter to choose Groceries."},
+  "f5": {"en": "Type the amount: 1250. You do not need to type the rupee sign or the paise."},
+  "f6": {"en": "Add a short note so you remember later, for example Weekly groceries."},
+  "f7": {"en": "Everything is ready. Press Ctrl+A to save. There is no separate Save button to forget."},
+  "f8": {"en": "Saved. This is the Day Book, a list of every entry by date. Your new payment is the last line, because it has the newest date. Click any line at any time to look at it or correct it. Press Next."},
+  "f9": {"en": "This is the ledger of the Groceries account: every grocery entry, with a running total. Every report works the same way, so you can click any line to see what is behind it. Press Next."},
+  "s1": {"en": "This is the Dashboard. Cash, bank, spending and savings at a glance. Click any bar in a chart and it opens the entries behind it."},
+  "s2": {"en": "These plain sentences point out what is unusual this month. Press Next."},
+  "s3": {"en": "Spending Analysis lists every account with last year's figure beside it. Click a row to see its entries."},
+  "s4": {"en": "Needs Attention collects things to look at: overdue bills, TDS due, low stock, repeat entries due, and entries that look duplicated."},
+  "s5": {"en": "Every report can be saved for Excel with this button. For a PDF, press Ctrl+P and choose Save as PDF."},
+  "n1": {"en": "Quick Entry looks like a notebook page. One line per payment or receipt. Press Next."},
+  "n2": {"en": "Try one line: type Milk in this Narration box, and the account is suggested from your earlier entries."},
+  "n3": {"en": "Type an amount here, for example 60. Ctrl+A would save all the lines together, but we will not save in this lesson."},
+  "n4": {"en": "Bill Inbox is where bill photos and PDFs go. You look at the bill on one side and type the entry on the other. The bill stays attached to the entry inside the database."},
+  "n5": {"en": "Choose the bill photos here. You can pick many at once."},
+  "n6": {"en": "Import from Excel or CSV is for a typed-up notebook or a bank statement. Pick the file here, match the columns, check each line, and import."},
+  "b1": {"en": "Utilities holds backup, health check, repair, security and settings. This first tab is Backup and Restore."},
+  "b2": {"en": "Press Create backup now. A safe copy of all your books is made in a second."},
+  "b3": {"en": "Backed up. HomeLedger also does this by itself at start, about hourly, and when you close it."},
+  "b4": {"en": "Type a folder on a pen drive or external disk here, for example E:\\HomeLedger Backups, and press Save folder. A second copy protects you if this computer fails. Press Next."},
+  "b5": {"en": "Security turns on a password and lets you add users: Owner, Accountant, Data entry and Viewer. Write the recovery key down when it is shown. Press Next."},
+  "b6": {"en": "Health Check verifies your books at any time. Press Next to finish."}
+ }
+}

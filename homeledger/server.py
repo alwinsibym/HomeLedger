@@ -394,6 +394,12 @@ def r_co_remove(app, q, b):
     return {"ok": True}
 
 
+@route(POST, "/api/companies/discard")
+def r_co_discard(app, q, b):
+    _co().discard_practice(str(b.get("id") or ""))
+    return {"ok": True}
+
+
 @route(POST, "/api/companies/carry")
 def r_co_carry(app, q, b):
     """Split / year-end close: a new company that starts on `cutoff` with the balances carried forward."""
@@ -427,7 +433,7 @@ def r_co_merge(app, q, b):
     return res
 
 
-for _p in ("/api/companies/open", "/api/companies/create", "/api/companies/remove", "/api/companies/carry", "/api/companies/merge"):
+for _p in ("/api/companies/open", "/api/companies/create", "/api/companies/remove", "/api/companies/discard", "/api/companies/carry", "/api/companies/merge"):
     POST[_p].owner_only = True
 
 

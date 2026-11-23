@@ -141,6 +141,29 @@ def remove_from_list(cid: str) -> None:
     _save(d)
 
 
+PRACTICE_PREFIX = "Practice Books"
+
+
+def discard_practice(cid: str) -> None:
+    """Delete a practice company made by the guided tour (files and list entry). Refuses anything else."""
+    if cid == "main" or cid == current_id():
+        raise UserError("Open your real books first, then remove the practice books.")
+    row = next((c for c in listing() if c["id"] == cid), None)
+    if not row:
+        return
+    if not row["name"].startswith(PRACTICE_PREFIX):
+        raise UserError("Only practice books made by the tour can be discarded here.")
+    f, b = paths(cid)
+    for ext in ("", "-wal", "-shm"):
+        Path(str(f) + ext).unlink(missing_ok=True)
+    if b.exists():
+        import shutil
+        shutil.rmtree(b, ignore_errors=True)
+    d = _load()
+    d["companies"] = [c for c in d["companies"] if c["id"] != cid]
+    _save(d)
+
+
 # ---------------------------------------------------------------------------
 # carry-forward: split / year-end close
 # ---------------------------------------------------------------------------

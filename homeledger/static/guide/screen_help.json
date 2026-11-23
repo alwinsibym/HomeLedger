@@ -1,0 +1,258 @@
+{
+ "gateway": {
+  "en": {
+   "title": "Gateway",
+   "what": "The main menu. Everything starts here.",
+   "todo": [
+    "Press the letter next to a line, or use the arrow keys and Enter.",
+    "Press Alt+G and type a few letters to jump to any screen.",
+    "Esc takes you one step back from any screen."
+   ],
+   "watch": ""
+  }
+ },
+ "voucher": {
+  "en": {
+   "title": "Voucher entry",
+   "what": "Where you record money paid, received or moved.",
+   "todo": [
+    "F5 Payment, F6 Receipt, F4 Contra, F7 Journal, F8 Sales, F9 Purchase.",
+    "Choose the account, type the amount, press Enter to move on, Ctrl+A to save.",
+    "Open a saved voucher to correct it, or Cancel it. Alt+2 duplicates it."
+   ],
+   "watch": "Date is approximate is for old notebook entries. Cancelled vouchers stay in the audit trail."
+  }
+ },
+ "daybook": {
+  "en": {
+   "title": "Day Book",
+   "what": "Every entry in date order.",
+   "todo": [
+    "Use the period buttons or the From and To dates.",
+    "Type in the filter box to find words or amounts.",
+    "Click a line, or press Enter, to open it."
+   ],
+   "watch": "Cancelled and optional entries are hidden unless you tick the box."
+  }
+ },
+ "ledger": {
+  "en": {
+   "title": "Ledger",
+   "what": "The statement of one account, with a running balance.",
+   "todo": [
+    "Click any line to open that entry.",
+    "Monthly summary shows the account month by month.",
+    "For a customer or supplier, Print statement for party gives an A4 statement."
+   ],
+   "watch": "Long statements load 1,500 lines at a time. Use Show the next to see more."
+  }
+ },
+ "dashboard": {
+  "en": {
+   "title": "Dashboard",
+   "what": "Cash, bank, spending and savings at a glance.",
+   "todo": [
+    "Click any bar or line to see the entries behind it.",
+    "Needs attention lists what to look at.",
+    "Change the dates with the period buttons."
+   ],
+   "watch": ""
+  }
+ },
+ "tb": {
+  "en": {
+   "title": "Trial Balance",
+   "what": "Every account with its debit or credit balance. The two totals must be equal.",
+   "todo": [
+    "Click an account to open its ledger.",
+    "If the totals ever differ, run Utilities, Health Check."
+   ],
+   "watch": ""
+  }
+ },
+ "pnl": {
+  "en": {
+   "title": "Profit & Loss",
+   "what": "Income less spending for the period.",
+   "todo": [
+    "Click any line to see the accounts and entries behind it.",
+    "Save as Excel on the right keeps a copy."
+   ],
+   "watch": ""
+  }
+ },
+ "bs": {
+  "en": {
+   "title": "Balance Sheet",
+   "what": "What you own and what you owe on a date.",
+   "todo": [
+    "Click any line to drill down.",
+    "The two sides must match. If not, check opening balances."
+   ],
+   "watch": ""
+  }
+ },
+ "receivables": {
+  "en": {
+   "title": "Bills Receivable",
+   "what": "Who owes you money, and how old each amount is.",
+   "todo": [
+    "Select a party and press Reminder letter to print a polite request.",
+    "Click a party to open the bills."
+   ],
+   "watch": ""
+  }
+ },
+ "payables": {
+  "en": {
+   "title": "Bills Payable",
+   "what": "Whom you owe, and how old each amount is.",
+   "todo": [
+    "Select a party and press Balance letter to confirm the amount with them."
+   ],
+   "watch": ""
+  }
+ },
+ "quickentry": {
+  "en": {
+   "title": "Quick Entry",
+   "what": "Many payments and receipts in one go, like a notebook page.",
+   "todo": [
+    "Type the narration and the account is suggested.",
+    "Enter in the last box adds a line. Ctrl+A saves all lines."
+   ],
+   "watch": "Choose the Cash or Bank account at the top first."
+  }
+ },
+ "billinbox": {
+  "en": {
+   "title": "Bill Inbox",
+   "what": "Keep bill photos and PDFs inside the database.",
+   "todo": [
+    "Add pictures, look at one, type the entry beside it, save.",
+    "The bill stays attached to the entry."
+   ],
+   "watch": "The same picture is never added twice."
+  }
+ },
+ "bulkimport": {
+  "en": {
+   "title": "Import from Excel / CSV",
+   "what": "Bring in a typed notebook or bank statement.",
+   "todo": [
+    "Pick the file, match the columns, review every line, then import.",
+    "Choose the account for each line. Your choices are remembered."
+   ],
+   "watch": "Lines already in the books are left unticked. Up to 5,000 lines per file."
+  }
+ },
+ "templates": {
+  "en": {
+   "title": "Templates & Repeats",
+   "what": "Saved vouchers you use again, such as rent or EMI.",
+   "todo": [
+    "Use starts a new entry from a template.",
+    "Repeat makes it appear on Due repeat entries when it is time."
+   ],
+   "watch": "Nothing is entered without your tick."
+  }
+ },
+ "repeats": {
+  "en": {
+   "title": "Due Repeat Entries",
+   "what": "Repeating entries that are due now.",
+   "todo": [
+    "Tick what to enter and press Enter the ticked entries.",
+    "Missed months appear as separate lines."
+   ],
+   "watch": ""
+  }
+ },
+ "alerts": {
+  "en": {
+   "title": "Needs Attention",
+   "what": "Things worth looking at.",
+   "todo": [
+    "Each line has an Open button to take you there.",
+    "It checks overdue bills, TDS, low stock, repeats and unusual or duplicate entries."
+   ],
+   "watch": ""
+  }
+ },
+ "spending": {
+  "en": {
+   "title": "Spending Analysis",
+   "what": "Where the money went, with last year beside it.",
+   "todo": [
+    "Click an account to see its entries.",
+    "Switch between Spending and Income at the top."
+   ],
+   "watch": ""
+  }
+ },
+ "yoy": {
+  "en": {
+   "title": "Year on Year",
+   "what": "This year against last year, month by month.",
+   "todo": [
+    "Click a bar to see that month's entries."
+   ],
+   "watch": ""
+  }
+ },
+ "utilities": {
+  "en": {
+   "title": "Utilities",
+   "what": "Backup, health check, repair, Tally XML, export, settings, security and audit trail.",
+   "todo": [
+    "Create backup now makes a safe copy.",
+    "Choose a second copy folder on a pen drive.",
+    "Security turns on a password and roles."
+   ],
+   "watch": "Keep a second copy of your backups away from this computer."
+  }
+ },
+ "companies": {
+  "en": {
+   "title": "Companies",
+   "what": "Separate sets of books.",
+   "todo": [
+    "Open another company, create one, or close the year and carry balances forward.",
+    "Split by date or merge when needed."
+   ],
+   "watch": ""
+  }
+ },
+ "masters": {
+  "en": {
+   "title": "Masters",
+   "what": "Accounts, groups and other lists.",
+   "todo": [
+    "Ledgers are your accounts. Groups organise them.",
+    "Alt+C creates a new one."
+   ],
+   "watch": ""
+  }
+ },
+ "openings": {
+  "en": {
+   "title": "Opening Balances",
+   "what": "What you have on the day the books begin.",
+   "todo": [
+    "Enter cash, bank, loans and amounts owed. The Difference line must say Balanced."
+   ],
+   "watch": "Do this once, at the start."
+  }
+ },
+ "guide": {
+  "en": {
+   "title": "Guide",
+   "what": "Step-by-step help with pictures, hands-on lessons and a shortcut map.",
+   "todo": [
+    "Learn by doing walks you through real screens in practice books.",
+    "Use the list of sections or the shortcut map."
+   ],
+   "watch": ""
+  }
+ }
+}

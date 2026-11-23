@@ -175,7 +175,7 @@ function renderMenu(sc, id) {
     { k: "Alt+F1", label: "Dashboard", fn: () => HL.go("dashboard") });
   HL.setKeys(keys);
 }
-HL.screens.gateway = { title: "", async render(sc) { await loadMasters(); renderMenu(sc, "root"); if (HL.startTour && !HL._tourAsked) { HL._tourAsked = true; setTimeout(() => HL.startTour(false), 500); } } };
+HL.screens.gateway = { title: "", async render(sc) { await loadMasters(); renderMenu(sc, "root"); if (!HL._tourAsked) { HL._tourAsked = true; const resumed = HL.walkBoot ? await HL.walkBoot() : false; if (!resumed && HL.startTour) setTimeout(() => HL.startTour(false), 500); } } };
 HL.screens.menu = { title: p => (HL.menus[p.id] || {}).title || "", async render(sc, params) { await loadMasters(); renderMenu(sc, params.id); } };
 function noticeBanner() {
   const n = HL.S.status && HL.S.status.notice;
