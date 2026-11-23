@@ -152,6 +152,7 @@ Built with Python (standard library), SQLite and a plain JavaScript interface. N
 ## Documentation
 
 - [User guide with screenshots](docs/USER_GUIDE.md) and a [printable PDF](docs/HomeLedger_Guide.pdf)
+- Malayalam guide (മലയാളം): [user guide](docs/USER_GUIDE_ML.md) and [printable PDF](docs/HomeLedger_Guide_Malayalam.pdf). Inside the app, the Guide, quick tour and hands-on lessons have an EN / മലയാളം switch.
 - In the app: Gateway, `G` (Guide and Help)
 
 ## Not included

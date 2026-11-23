@@ -9,6 +9,16 @@
     "Esc takes you one step back from any screen."
    ],
    "watch": ""
+  },
+  "ml": {
+   "title": "Gateway",
+   "what": "പ്രധാന മെനു. എല്ലാം ഇവിടെ നിന്നാണ് തുടങ്ങുന്നത്.",
+   "todo": [
+    "ഒരു വരിയുടെ അരികിലെ അക്ഷരം അമർത്തുക, അല്ലെങ്കിൽ ആരോ കീകളും Enter-ഉം ഉപയോഗിക്കുക.",
+    "Alt+G അമർത്തി ഏതാനും അക്ഷരങ്ങൾ ടൈപ്പ് ചെയ്ത് ഏത് സ്ക്രീനിലേക്കും പോകാം.",
+    "ഏത് സ്ക്രീനിൽ നിന്നും Esc ഒരു ചുവട് പിന്നിലേക്ക് കൊണ്ടുപോകും."
+   ],
+   "watch": ""
   }
  },
  "voucher": {
@@ -21,6 +31,16 @@
     "Open a saved voucher to correct it, or Cancel it. Alt+2 duplicates it."
    ],
    "watch": "Date is approximate is for old notebook entries. Cancelled vouchers stay in the audit trail."
+  },
+  "ml": {
+   "title": "Voucher എൻട്രി",
+   "what": "പണം കൊടുത്തതും കിട്ടിയതും മാറ്റിയതും രേഖപ്പെടുത്തുന്ന സ്ഥലം.",
+   "todo": [
+    "F5 Payment, F6 Receipt, F4 Contra, F7 Journal, F8 Sales, F9 Purchase.",
+    "അക്കൗണ്ട് തിരഞ്ഞെടുക്കുക, തുക ടൈപ്പ് ചെയ്യുക, Enter അടുത്തതിലേക്ക്, Ctrl+A സേവ്.",
+    "സേവ് ചെയ്ത voucher തുറന്ന് തിരുത്താം അല്ലെങ്കിൽ Cancel ചെയ്യാം. Alt+2 പകർപ്പ് ഉണ്ടാക്കും."
+   ],
+   "watch": "'Date is approximate' പഴയ നോട്ടുബുക്ക് എൻട്രികൾക്കാണ്. Cancel ചെയ്ത voucher-കൾ audit trail-ൽ ഉണ്ടാകും."
   }
  },
  "daybook": {
@@ -33,6 +53,16 @@
     "Click a line, or press Enter, to open it."
    ],
    "watch": "Cancelled and optional entries are hidden unless you tick the box."
+  },
+  "ml": {
+   "title": "Day Book",
+   "what": "എല്ലാ എൻട്രികളും തീയതി ക്രമത്തിൽ.",
+   "todo": [
+    "period ബട്ടണുകളോ From, To തീയതികളോ ഉപയോഗിക്കുക.",
+    "വാക്കുകളോ തുകകളോ കണ്ടെത്താൻ filter കള്ളിയിൽ ടൈപ്പ് ചെയ്യുക.",
+    "ഒരു വരിയിൽ ക്ലിക്ക് ചെയ്യുകയോ Enter അമർത്തുകയോ ചെയ്താൽ അത് തുറക്കും."
+   ],
+   "watch": "ബോക്സിൽ ടിക്ക് ഇടുന്നതുവരെ Cancel ചെയ്തതും optional ആയതുമായ എൻട്രികൾ മറഞ്ഞിരിക്കും."
   }
  },
  "ledger": {
@@ -45,6 +75,16 @@
     "For a customer or supplier, Print statement for party gives an A4 statement."
    ],
    "watch": "Long statements load 1,500 lines at a time. Use Show the next to see more."
+  },
+  "ml": {
+   "title": "Ledger",
+   "what": "ഒരു അക്കൗണ്ടിന്റെ സ്റ്റേറ്റ്മെന്റ്, ഓടുന്ന ബാലൻസോടെ.",
+   "todo": [
+    "ഏത് വരിയിലും ക്ലിക്ക് ചെയ്താൽ ആ എൻട്രി തുറക്കും.",
+    "Monthly summary അക്കൗണ്ടിനെ മാസം തോറും കാണിക്കും.",
+    "കസ്റ്റമർക്കോ സപ്ലയർക്കോ Print statement for party A4 സ്റ്റേറ്റ്മെന്റ് തരും."
+   ],
+   "watch": "നീണ്ട സ്റ്റേറ്റ്മെന്റുകൾ 1,500 വരി വീതം ലോഡ് ആകും. കൂടുതൽ കാണാൻ Show the next ഉപയോഗിക്കുക."
   }
  },
  "dashboard": {
@@ -55,6 +95,16 @@
     "Click any bar or line to see the entries behind it.",
     "Needs attention lists what to look at.",
     "Change the dates with the period buttons."
+   ],
+   "watch": ""
+  },
+  "ml": {
+   "title": "Dashboard",
+   "what": "പണം, ബാങ്ക്, ചെലവ്, സമ്പാദ്യം ഒറ്റനോട്ടത്തിൽ.",
+   "todo": [
+    "ഏത് ബാറിലോ വരയിലോ ക്ലിക്ക് ചെയ്താൽ അതിന് പിന്നിലെ എൻട്രികൾ കാണാം.",
+    "Needs attention ശ്രദ്ധിക്കേണ്ടവ കാണിക്കും.",
+    "period ബട്ടണുകൾ കൊണ്ട് തീയതികൾ മാറ്റാം."
    ],
    "watch": ""
   }
@@ -68,6 +118,15 @@
     "If the totals ever differ, run Utilities, Health Check."
    ],
    "watch": ""
+  },
+  "ml": {
+   "title": "Trial Balance",
+   "what": "ഓരോ അക്കൗണ്ടും അതിന്റെ debit അല്ലെങ്കിൽ credit ബാലൻസോടെ. രണ്ട് ആകെത്തുകകളും തുല്യമായിരിക്കണം.",
+   "todo": [
+    "ഒരു അക്കൗണ്ടിൽ ക്ലിക്ക് ചെയ്താൽ അതിന്റെ ledger തുറക്കും.",
+    "ആകെത്തുകകൾ ഒരിക്കലും വ്യത്യാസപ്പെട്ടാൽ Utilities, Health Check ഓടിക്കുക."
+   ],
+   "watch": ""
   }
  },
  "pnl": {
@@ -77,6 +136,15 @@
    "todo": [
     "Click any line to see the accounts and entries behind it.",
     "Save as Excel on the right keeps a copy."
+   ],
+   "watch": ""
+  },
+  "ml": {
+   "title": "Profit & Loss",
+   "what": "ആ കാലയളവിലെ വരുമാനം കുറച്ചുള്ള ചെലവ്.",
+   "todo": [
+    "ഏത് വരിയിലും ക്ലിക്ക് ചെയ്താൽ അതിന് പിന്നിലെ അക്കൗണ്ടുകളും എൻട്രികളും കാണാം.",
+    "വലതുവശത്തെ Save as Excel ഒരു പകർപ്പ് സൂക്ഷിക്കും."
    ],
    "watch": ""
   }
@@ -90,6 +158,15 @@
     "The two sides must match. If not, check opening balances."
    ],
    "watch": ""
+  },
+  "ml": {
+   "title": "Balance Sheet",
+   "what": "ഒരു തീയതിയിൽ നിങ്ങൾക്കുള്ളതും നിങ്ങൾ കൊടുക്കാനുള്ളതും.",
+   "todo": [
+    "ഏത് വരിയിലും ക്ലിക്ക് ചെയ്ത് വിശദാംശങ്ങളിലേക്ക് പോകാം.",
+    "രണ്ട് വശവും ഒത്തുവരണം. ഇല്ലെങ്കിൽ opening balances പരിശോധിക്കുക."
+   ],
+   "watch": ""
   }
  },
  "receivables": {
@@ -101,6 +178,15 @@
     "Click a party to open the bills."
    ],
    "watch": ""
+  },
+  "ml": {
+   "title": "Bills Receivable",
+   "what": "ആരൊക്കെ നിങ്ങൾക്ക് പണം തരാനുണ്ട്, ഓരോ തുകയ്ക്കും എത്ര പഴക്കം.",
+   "todo": [
+    "ഒരാളെ തിരഞ്ഞെടുത്ത് Reminder letter അമർത്തി മര്യാദയുള്ള അപേക്ഷ പ്രിന്റ് ചെയ്യുക.",
+    "ഒരാളിൽ ക്ലിക്ക് ചെയ്താൽ ബില്ലുകൾ തുറക്കും."
+   ],
+   "watch": ""
   }
  },
  "payables": {
@@ -109,6 +195,14 @@
    "what": "Whom you owe, and how old each amount is.",
    "todo": [
     "Select a party and press Balance letter to confirm the amount with them."
+   ],
+   "watch": ""
+  },
+  "ml": {
+   "title": "Bills Payable",
+   "what": "നിങ്ങൾ ആർക്കൊക്കെ കൊടുക്കാനുണ്ട്, ഓരോ തുകയ്ക്കും എത്ര പഴക്കം.",
+   "todo": [
+    "ഒരാളെ തിരഞ്ഞെടുത്ത് Balance letter അമർത്തി തുക അവരുമായി ഉറപ്പിക്കുക."
    ],
    "watch": ""
   }
@@ -122,6 +216,15 @@
     "Enter in the last box adds a line. Ctrl+A saves all lines."
    ],
    "watch": "Choose the Cash or Bank account at the top first."
+  },
+  "ml": {
+   "title": "Quick Entry",
+   "what": "ഒരുപാട് payment, receipt എന്നിവ ഒരുമിച്ച്, നോട്ടുബുക്ക് താൾ പോലെ.",
+   "todo": [
+    "narration ടൈപ്പ് ചെയ്താൽ അക്കൗണ്ട് നിർദ്ദേശിക്കും.",
+    "അവസാന കള്ളിയിൽ Enter പുതിയ വരി ചേർക്കും. Ctrl+A എല്ലാ വരികളും സേവ് ചെയ്യും."
+   ],
+   "watch": "ആദ്യം മുകളിൽ Cash അല്ലെങ്കിൽ Bank അക്കൗണ്ട് തിരഞ്ഞെടുക്കുക."
   }
  },
  "billinbox": {
@@ -133,6 +236,15 @@
     "The bill stays attached to the entry."
    ],
    "watch": "The same picture is never added twice."
+  },
+  "ml": {
+   "title": "Bill Inbox",
+   "what": "ബില്ലുകളുടെ ഫോട്ടോയും PDF-ഉം ഡാറ്റാബേസിനുള്ളിൽ സൂക്ഷിക്കാം.",
+   "todo": [
+    "ചിത്രങ്ങൾ ചേർക്കുക, ഒന്ന് നോക്കുക, അതിനരികിൽ എൻട്രി ടൈപ്പ് ചെയ്യുക, സേവ് ചെയ്യുക.",
+    "ബിൽ ആ എൻട്രിയോട് ചേർന്നിരിക്കും."
+   ],
+   "watch": "ഒരേ ചിത്രം രണ്ടു തവണ ചേർക്കില്ല."
   }
  },
  "bulkimport": {
@@ -144,6 +256,15 @@
     "Choose the account for each line. Your choices are remembered."
    ],
    "watch": "Lines already in the books are left unticked. Up to 5,000 lines per file."
+  },
+  "ml": {
+   "title": "Excel / CSV-ൽ നിന്ന് import",
+   "what": "ടൈപ്പ് ചെയ്ത നോട്ടുബുക്കോ ബാങ്ക് സ്റ്റേറ്റ്മെന്റോ കൊണ്ടുവരാം.",
+   "todo": [
+    "ഫയൽ എടുക്കുക, കോളങ്ങൾ ചേർക്കുക, ഓരോ വരിയും പരിശോധിക്കുക, പിന്നെ import ചെയ്യുക.",
+    "ഓരോ വരിക്കും അക്കൗണ്ട് തിരഞ്ഞെടുക്കുക. നിങ്ങളുടെ തിരഞ്ഞെടുപ്പുകൾ ഓർത്തുവയ്ക്കും."
+   ],
+   "watch": "കണക്കിൽ ഇതിനകം ഉള്ള വരികൾ ടിക്ക് ഇടാതെ വിടും. ഒരു ഫയലിൽ 5,000 വരി വരെ."
   }
  },
  "templates": {
@@ -155,6 +276,15 @@
     "Repeat makes it appear on Due repeat entries when it is time."
    ],
    "watch": "Nothing is entered without your tick."
+  },
+  "ml": {
+   "title": "Templates & Repeats",
+   "what": "വാടക, EMI പോലെ വീണ്ടും വീണ്ടും ഉപയോഗിക്കുന്ന സേവ് ചെയ്ത voucher-കൾ.",
+   "todo": [
+    "Use ഒരു template-ൽ നിന്ന് പുതിയ എൻട്രി തുടങ്ങും.",
+    "Repeat നൽകിയാൽ സമയമാകുമ്പോൾ അത് Due repeat entries-ൽ വരും."
+   ],
+   "watch": "നിങ്ങൾ ടിക്ക് ചെയ്യാതെ ഒന്നും എൻട്രി ആകില്ല."
   }
  },
  "repeats": {
@@ -164,6 +294,15 @@
    "todo": [
     "Tick what to enter and press Enter the ticked entries.",
     "Missed months appear as separate lines."
+   ],
+   "watch": ""
+  },
+  "ml": {
+   "title": "Due Repeat Entries",
+   "what": "ഇപ്പോൾ സമയമായ ആവർത്തന എൻട്രികൾ.",
+   "todo": [
+    "എൻട്രി ചെയ്യേണ്ടവ ടിക്ക് ചെയ്ത് Enter the ticked entries അമർത്തുക.",
+    "വിട്ടുപോയ മാസങ്ങൾ വേറെ വരികളായി വരും."
    ],
    "watch": ""
   }
@@ -177,6 +316,15 @@
     "It checks overdue bills, TDS, low stock, repeats and unusual or duplicate entries."
    ],
    "watch": ""
+  },
+  "ml": {
+   "title": "Needs Attention",
+   "what": "ശ്രദ്ധിക്കേണ്ട കാര്യങ്ങൾ.",
+   "todo": [
+    "ഓരോ വരിയിലും അവിടേക്ക് കൊണ്ടുപോകാൻ Open ബട്ടൺ ഉണ്ട്.",
+    "കുടിശ്ശിക ബില്ലുകൾ, TDS, സ്റ്റോക്ക് കുറവ്, repeats, അസാധാരണമോ ഇരട്ടിച്ചതോ ആയ എൻട്രികൾ എന്നിവ പരിശോധിക്കും."
+   ],
+   "watch": ""
   }
  },
  "spending": {
@@ -188,6 +336,15 @@
     "Switch between Spending and Income at the top."
    ],
    "watch": ""
+  },
+  "ml": {
+   "title": "Spending Analysis",
+   "what": "പണം എവിടെ പോയി, കഴിഞ്ഞ വർഷത്തെ തുകയോടൊപ്പം.",
+   "todo": [
+    "ഒരു അക്കൗണ്ടിൽ ക്ലിക്ക് ചെയ്താൽ അതിന്റെ എൻട്രികൾ കാണാം.",
+    "മുകളിൽ Spending, Income എന്നിവയ്ക്കിടയിൽ മാറാം."
+   ],
+   "watch": ""
   }
  },
  "yoy": {
@@ -196,6 +353,14 @@
    "what": "This year against last year, month by month.",
    "todo": [
     "Click a bar to see that month's entries."
+   ],
+   "watch": ""
+  },
+  "ml": {
+   "title": "Year on Year",
+   "what": "ഈ വർഷം കഴിഞ്ഞ വർഷത്തോട് താരതമ്യം, മാസം തോറും.",
+   "todo": [
+    "ഒരു ബാറിൽ ക്ലിക്ക് ചെയ്താൽ ആ മാസത്തെ എൻട്രികൾ കാണാം."
    ],
    "watch": ""
   }
@@ -210,6 +375,16 @@
     "Security turns on a password and roles."
    ],
    "watch": "Keep a second copy of your backups away from this computer."
+  },
+  "ml": {
+   "title": "Utilities",
+   "what": "ബാക്കപ്പ്, health check, repair, Tally XML, export, settings, സുരക്ഷ, audit trail.",
+   "todo": [
+    "Create backup now സുരക്ഷിതമായ ഒരു പകർപ്പ് ഉണ്ടാക്കും.",
+    "പെൻഡ്രൈവിൽ രണ്ടാമത്തെ പകർപ്പിനുള്ള ഫോൾഡർ തിരഞ്ഞെടുക്കുക.",
+    "Security പാസ്‌വേഡും റോളുകളും ഓൺ ചെയ്യും."
+   ],
+   "watch": "ബാക്കപ്പുകളുടെ ഒരു രണ്ടാമത്തെ പകർപ്പ് ഈ കമ്പ്യൂട്ടറിൽ നിന്ന് മാറ്റി സൂക്ഷിക്കുക."
   }
  },
  "companies": {
@@ -219,6 +394,15 @@
    "todo": [
     "Open another company, create one, or close the year and carry balances forward.",
     "Split by date or merge when needed."
+   ],
+   "watch": ""
+  },
+  "ml": {
+   "title": "Companies",
+   "what": "വെവ്വേറെ കണക്കുപുസ്തകങ്ങൾ.",
+   "todo": [
+    "മറ്റൊരു കമ്പനി തുറക്കുക, ഉണ്ടാക്കുക, അല്ലെങ്കിൽ വർഷം അവസാനിപ്പിച്ച് ബാലൻസുകൾ മുന്നോട്ട് കൊണ്ടുപോകുക.",
+    "ആവശ്യമെങ്കിൽ തീയതി വച്ച് വിഭജിക്കുകയോ ഒന്നിപ്പിക്കുകയോ ചെയ്യാം."
    ],
    "watch": ""
   }
@@ -232,6 +416,15 @@
     "Alt+C creates a new one."
    ],
    "watch": ""
+  },
+  "ml": {
+   "title": "Masters",
+   "what": "അക്കൗണ്ടുകൾ, ഗ്രൂപ്പുകൾ, മറ്റ് പട്ടികകൾ.",
+   "todo": [
+    "Ledger-കളാണ് നിങ്ങളുടെ അക്കൗണ്ടുകൾ. Group-കൾ അവയെ ക്രമപ്പെടുത്തുന്നു.",
+    "Alt+C പുതിയത് ഉണ്ടാക്കും."
+   ],
+   "watch": ""
   }
  },
  "openings": {
@@ -242,6 +435,14 @@
     "Enter cash, bank, loans and amounts owed. The Difference line must say Balanced."
    ],
    "watch": "Do this once, at the start."
+  },
+  "ml": {
+   "title": "Opening Balances",
+   "what": "കണക്ക് തുടങ്ങുന്ന ദിവസം നിങ്ങളുടെ കയ്യിലുള്ളത്.",
+   "todo": [
+    "പണം, ബാങ്ക്, വായ്പകൾ, കിട്ടാനുള്ള തുകകൾ എന്നിവ നൽകുക. Difference വരിയിൽ Balanced എന്ന് കാണണം."
+   ],
+   "watch": "തുടക്കത്തിൽ ഒരു തവണ മാത്രം ചെയ്യുക."
   }
  },
  "guide": {
@@ -251,6 +452,15 @@
    "todo": [
     "Learn by doing walks you through real screens in practice books.",
     "Use the list of sections or the shortcut map."
+   ],
+   "watch": ""
+  },
+  "ml": {
+   "title": "ഗൈഡ്",
+   "what": "ചിത്രങ്ങളോടെ ഘട്ടം ഘട്ടമായുള്ള സഹായം, പ്രായോഗിക പാഠങ്ങൾ, ഷോർട്ട്കട്ട് മാപ്പ്.",
+   "todo": [
+    "Learn by doing യഥാർത്ഥ സ്ക്രീനുകളിലൂടെ പ്രാക്ടീസ് പുസ്തകങ്ങളിൽ നിങ്ങളെ കൊണ്ടുപോകും.",
+    "ഭാഗങ്ങളുടെ പട്ടികയോ ഷോർട്ട്കട്ട് മാപ്പോ ഉപയോഗിക്കുക."
    ],
    "watch": ""
   }

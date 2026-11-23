@@ -840,6 +840,31 @@ class TestGuide(unittest.TestCase):
             if s.get("image"):
                 self.assertTrue((g / (s["image"] + ".png")).is_file(), s["image"])
 
+    def test_malayalam_files_cover_english(self):
+        import json
+        g = Path(__file__).resolve().parent.parent / "homeledger" / "static" / "guide"
+        en = json.loads((g / "guide.json").read_text(encoding="utf-8"))
+        ml = json.loads((g / "guide_ml.json").read_text(encoding="utf-8"))
+        self.assertEqual([s["id"] for s in en["sections"]], list(ml["sections"]))
+        for s in en["sections"]:
+            x = ml["sections"][s["id"]]
+            self.assertEqual(len(x["text"]), len(s["text"]), s["id"])
+            self.assertEqual(len(x.get("tips", [])), len(s.get("tips", [])), s["id"])
+        for grp in en["shortcuts"]:
+            self.assertIn(grp["group"], ml["groups"])
+            for _k, d in grp["rows"]:
+                self.assertIn(d, ml["rows"], d)
+        self.assertEqual(len(ml["faq"]), len(en["faq"]))
+        self.assertEqual(len(ml["tour"]), 6)
+        les = json.loads((g / "lessons.json").read_text(encoding="utf-8"))
+        lm = json.loads((g / "lessons_ml.json").read_text(encoding="utf-8"))
+        self.assertEqual(set(les["steps"]), set(lm["steps"]))
+        self.assertEqual(set(les["ui"]), set(lm["ui"]))
+        self.assertEqual(set(les["lessons"]), set(lm["lessons"]))
+        sh = json.loads((g / "screen_help.json").read_text(encoding="utf-8"))
+        for k, v in sh.items():
+            self.assertIn("ml", v, k)
+
     def test_lessons_and_help_are_consistent(self):
         import json, re
         g = Path(__file__).resolve().parent.parent / "homeledger" / "static"

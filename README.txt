@@ -39,3 +39,4 @@ NOTES
  - Text too small? Utilities > Settings > Text size.
  - If something fails to start, give the file %LOCALAPPDATA%\HomeLedger\logs\homeledger.log to whoever set it up.
  - Full guide: docs\USER_GUIDE.md and docs\HomeLedger_Guide.pdf in the project on GitHub.
+ - Malayalam guide: docs\USER_GUIDE_ML.md and docs\HomeLedger_Guide_Malayalam.pdf. In the app, use the EN / Malayalam switch in the Guide.
