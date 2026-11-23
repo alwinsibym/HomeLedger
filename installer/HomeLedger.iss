@@ -1,4 +1,8 @@
 ; HomeLedger installer (Inno Setup 6). Built automatically by GitHub (see .github/workflows/build-installer.yml).
+; Change these three lines to change the name shown in the installer, in Windows Settings > Apps and in the file properties.
+#define Publisher "HomeLedger"
+#define PublisherURL "https://github.com/alwinsibym/HomeLedger"
+#define CopyrightYear "2026"
 #ifndef AppVersion
   #define AppVersion "0.0.0"
 #endif
@@ -8,7 +12,10 @@ AppId={{B7C0F4D2-5E1A-4C86-9A3B-0D6E2F1A7C45}
 AppName=HomeLedger
 AppVersion={#AppVersion}
 AppVerName=HomeLedger {#AppVersion}
-AppPublisher=HomeLedger
+AppPublisher={#Publisher}
+AppPublisherURL={#PublisherURL}
+AppSupportURL={#PublisherURL}
+AppCopyright=Copyright (C) {#CopyrightYear} {#Publisher}
 ; Installs just for the signed-in Windows user: no administrator password needed, and it can be removed from Settings > Apps.
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
@@ -34,6 +41,9 @@ MinVersion=10.0
 CloseApplications=no
 VersionInfoVersion={#AppVersion}
 VersionInfoProductName=HomeLedger
+VersionInfoCompanyName={#Publisher}
+VersionInfoCopyright=Copyright (C) {#CopyrightYear} {#Publisher}
+VersionInfoDescription=HomeLedger Setup
 
 [Messages]
 WelcomeLabel1=Welcome to HomeLedger

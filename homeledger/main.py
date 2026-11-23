@@ -81,7 +81,8 @@ def open_window(url: str) -> None:
     if exe:
         profile = config.data_dir() / "window-profile"  # own profile: own window, own size, no clash with their browser
         args = [exe, f"--app={url}", f"--user-data-dir={profile}", "--no-first-run",
-                "--no-default-browser-check", "--disable-features=Translate", "--window-size=1366,820"]
+                "--no-default-browser-check", "--disable-features=Translate"]
+        args.append("--start-maximized" if config.window_mode() == "max" else "--window-size=1366,820")
         try:
             subprocess.Popen(args, close_fds=True)
             try:

@@ -3,7 +3,7 @@ import os
 import sys
 from pathlib import Path
 
-VERSION = "1.22.0"
+VERSION = "1.23.0"
 APP_NAME = "HomeLedger"
 DEFAULT_PORT = int(os.environ.get("HOMELEDGER_PORT", "8765"))
 PORT_RANGE = 10  # tries DEFAULT_PORT .. DEFAULT_PORT + PORT_RANGE - 1
@@ -45,3 +45,18 @@ def static_dir() -> Path:
 def default_copy_dir() -> str:
     """Suggested second-copy folder for backups (inside Documents)."""
     return str(Path.home() / "Documents" / "HomeLedger Backups")
+
+
+def window_mode() -> str:
+    """'max' (default, fills the screen) or 'window' (a normal window). Kept in a tiny file so it is known before any books open."""
+    try:
+        v = (data_dir() / "window.txt").read_text(encoding="utf-8").strip()
+        return v if v in ("max", "window") else "max"
+    except OSError:
+        return "max"
+
+
+def set_window_mode(v: str) -> None:
+    if v not in ("max", "window"):
+        raise ValueError("unknown window mode")
+    (data_dir() / "window.txt").write_text(v, encoding="utf-8")

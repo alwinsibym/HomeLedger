@@ -830,6 +830,26 @@ class TestTemplatesInsights(Base):
         tp.delete(self.c, tp.listing(self.c)[0]["id"])
 
 
+class TestWindowMode(unittest.TestCase):
+    def test_default_and_save(self):
+        from homeledger import config
+        import tempfile
+        old = os.environ.get("HOMELEDGER_DATA")
+        with tempfile.TemporaryDirectory() as d:
+            os.environ["HOMELEDGER_DATA"] = d
+            try:
+                self.assertEqual(config.window_mode(), "max")
+                config.set_window_mode("window")
+                self.assertEqual(config.window_mode(), "window")
+                (Path(d) / "window.txt").write_text("junk")
+                self.assertEqual(config.window_mode(), "max")
+                with self.assertRaises(ValueError):
+                    config.set_window_mode("tiny")
+            finally:
+                if old is None: os.environ.pop("HOMELEDGER_DATA", None)
+                else: os.environ["HOMELEDGER_DATA"] = old
+
+
 class TestGuide(unittest.TestCase):
     def test_guide_images_exist(self):
         import json

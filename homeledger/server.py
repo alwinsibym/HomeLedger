@@ -233,7 +233,7 @@ def r_status(app, q, b):
                 "last_backup": st["last_backup"] or (backups[0]["when"] if backups else ""),
                 "copy_dir": st["copy_dir"], "default_copy_dir": config.default_copy_dir(),
                 "last_external_copy": st["last_external_copy"], "copy_error": app.last_copy_error,
-                "text_size": st["text_size"] or "large", "data_dir": str(config.data_dir()),
+                "text_size": st["text_size"] or "large", "window_mode": config.window_mode(), "data_dir": str(config.data_dir()),
                 "look": st["look"] or "prime", "copy_protected": bool(dbm.get_setting(c, "copy_password", "")), "auth_on": app.auth_on}
     finally:
         c.close()
@@ -450,6 +450,10 @@ def r_settings_save(app, q, b):
                 if b["text_size"] not in ("normal", "large", "xlarge"):
                     raise UserError("Unknown text size.")
                 dbm.set_setting(c, "text_size", b["text_size"])
+            if "window_mode" in b:
+                if b["window_mode"] not in ("max", "window"):
+                    raise UserError("Unknown window setting.")
+                config.set_window_mode(b["window_mode"])
             if "look" in b:
                 if b["look"] not in ("prime", "classic"):
                     raise UserError("Unknown look.")
