@@ -1,6 +1,6 @@
 import type { SVGProps } from "react";
 
-export type IconName = "offline" | "save" | "copy" | "file" | "download" | "github" | "check" | "x" | "info" | "menu" | "chevron";
+export type IconName = "offline" | "save" | "copy" | "file" | "download" | "github" | "check" | "x" | "info" | "menu" | "chevron" | "arrow";
 
 const paths: Record<IconName, string> = {
   offline: "M2 8.8a15 15 0 0 1 4-2.6M22 8.8a15 15 0 0 0-8.5-3.7M5 12.5a10 10 0 0 1 3.2-2M19 12.5a10 10 0 0 0-4.4-2.4M8.5 16.2a5 5 0 0 1 7 0M12 20h.01M3 3l18 18",
@@ -15,6 +15,7 @@ const paths: Record<IconName, string> = {
   info: "M12 8h.01M11 12h1v5h1M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z",
   menu: "M4 6h16M4 12h16M4 18h16",
   chevron: "M6 9l6 6 6-6",
+  arrow: "M7 17L17 7M8 7h9v9",
 };
 
 export function Icon({ name, size = 20, ...rest }: { name: IconName; size?: number } & Omit<SVGProps<SVGSVGElement>, "name">) {

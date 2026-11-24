@@ -8,7 +8,7 @@ export function Safety() {
   const { t } = useLang();
   const s = t.safety;
   const col = (c: { title: string; items: string[] }, kind: "no" | "yes") => (
-    <div className={`panel panel-${kind}`}>
+    <div className={`panel glass rv panel-${kind}`}>
       <h3>{c.title}</h3>
       <ul>
         {c.items.map((x) => (
@@ -21,7 +21,7 @@ export function Safety() {
     </div>
   );
   return (
-    <Section id="safety" eyebrow={s.eyebrow} title={s.title} tone="tint">
+    <Section id="safety" eyebrow={s.eyebrow} title={s.title}>
       <div className="two">
         {col(s.never, "no")}
         {col(s.always, "yes")}

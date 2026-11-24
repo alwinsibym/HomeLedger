@@ -11,9 +11,9 @@ export function Download({ release }: { release: Release | null }) {
   const d = t.download;
   const href = release?.installerUrl ?? links.releases;
   return (
-    <Section id="download" eyebrow={d.eyebrow} title={d.title} lead={d.lead} tone="tint">
+    <Section id="download" eyebrow={d.eyebrow} title={d.title} lead={d.lead}>
       <div className="dl">
-        <div className="dl-main panel">
+        <div className="dl-main panel glass rv">
           <a className="btn primary big" href={href}>
             <Icon name="download" />
             {release?.installerUrl ? d.button : d.buttonFallback}
@@ -36,11 +36,11 @@ export function Download({ release }: { release: Release | null }) {
         </div>
 
         <div className="dl-side">
-          <div className="panel note">
+          <div className="panel glass note rv">
             <h3><Icon name="info" size={20} />{d.smartTitle}</h3>
             <p>{d.smartText}</p>
           </div>
-          <div className="panel">
+          <div className="panel glass rv">
             <h3>{d.guidesTitle}</h3>
             <ul className="linklist">
               <li><a href={links.guideEn} target="_blank" rel="noopener noreferrer">{d.guideEn}</a></li>

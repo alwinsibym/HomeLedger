@@ -1,9 +1,11 @@
 import { LanguageProvider } from "@/components/LanguageProvider";
+import { MotionRoot } from "@/components/MotionRoot";
+import { PageGlow } from "@/components/PageGlow";
 import { Header } from "@/components/Header";
 import { Hero } from "@/components/Hero";
-import { TrustStrip } from "@/components/TrustStrip";
-import { Features } from "@/components/Features";
-import { Screens } from "@/components/Screens";
+import { Hub } from "@/components/Hub";
+import { Bento } from "@/components/Bento";
+import { Showcase } from "@/components/Showcase";
 import { HowItWorks } from "@/components/HowItWorks";
 import { Safety } from "@/components/Safety";
 import { Shortcuts } from "@/components/Shortcuts";
@@ -20,12 +22,13 @@ export default async function Home() {
   return (
     <LanguageProvider>
       <a className="skip" href="#features">Skip to content</a>
+      <PageGlow />
       <Header />
       <main>
         <Hero release={release} />
-        <TrustStrip />
-        <Features />
-        <Screens />
+        <Hub />
+        <Bento />
+        <Showcase />
         <HowItWorks />
         <Safety />
         <Shortcuts />
@@ -33,6 +36,7 @@ export default async function Home() {
         <Faq />
       </main>
       <Footer />
+      <MotionRoot />
     </LanguageProvider>
   );
 }

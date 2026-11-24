@@ -12,7 +12,7 @@ export function Faq() {
     <Section id="faq" eyebrow={f.eyebrow} title={f.title}>
       <div className="faq">
         {f.items.map((it) => (
-          <details key={it.q}>
+          <details key={it.q} className="glass rv">
             <summary>
               <span>{it.q}</span>
               <Icon name="chevron" size={18} />
