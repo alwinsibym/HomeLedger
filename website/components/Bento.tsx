@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { useLang } from "./LanguageProvider";
 import { Section } from "./Section";
 
@@ -42,10 +43,36 @@ const files = ["bill.jpg", "rent.pdf", "bank.csv"];
 
 export function Bento() {
   const { t } = useLang();
+  const grid = useRef<HTMLDivElement>(null);
+
+  // Tiles that scroll up past the top of the screen shrink and fade a little (--leave, 0 to 1), the mirror of the pop-in.
+  useEffect(() => {
+    const el = grid.current;
+    if (!el || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const tiles = Array.from(el.children) as HTMLElement[];
+    let raf = 0;
+    const run = () => {
+      raf = 0;
+      const vh = window.innerHeight;
+      for (const tile of tiles) {
+        const r = tile.getBoundingClientRect();
+        tile.style.setProperty("--leave", Math.min(1, Math.max(0, -r.top / (r.height + vh * 0.2))).toFixed(3));
+      }
+    };
+    const on = () => { if (!raf) raf = requestAnimationFrame(run); };
+    run();
+    window.addEventListener("scroll", on, { passive: true });
+    window.addEventListener("resize", on);
+    return () => {
+      window.removeEventListener("scroll", on);
+      window.removeEventListener("resize", on);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, []);
   const f = t.features;
   const it = f.items;
   const tile = (i: number, cls: string, art?: React.ReactNode) => (
-    <article key={it[i].title} className={`tile glass rv ${cls}`} style={{ ["--d" as string]: `${(i % 4) * 0.07}s` }}>
+    <article key={it[i].title} className={`tile glass rv pop ${cls}`} style={{ ["--d" as string]: `${(i % 3) * 0.09 + Math.floor(i / 3) * 0.04}s` }}>
       <kbd className="key">{it[i].key}</kbd>
       <h3>{it[i].title}</h3>
       <p>{it[i].text}</p>
@@ -54,7 +81,7 @@ export function Bento() {
   );
   return (
     <Section id="features" eyebrow={f.eyebrow} title={f.title} lead={f.lead}>
-      <div className="bento">
+      <div className="bento" ref={grid}>
         {tile(0, "t-entry", <EntryArt />)}
         {tile(1, "t-dash", <BarsArt />)}
         {tile(2, "t-bill", <ChipsArt items={files} />)}
@@ -64,12 +91,12 @@ export function Bento() {
         {tile(6, "t-tpl")}
         {tile(7, "t-tax")}
         {tile(8, "t-safe")}
-        <article className="tile dark rv t-off" style={{ ["--d" as string]: "0.05s" }}>
+        <article className="tile dark rv pop t-off" style={{ ["--d" as string]: "0.05s" }}>
           <strong className="big-n">{t.hero.stat.big}</strong>
           <h3>{t.trust[0].title}</h3>
           <p>{t.trust[0].text}</p>
         </article>
-        <article className="tile glass rv t-save" style={{ ["--d" as string]: "0.12s" }}>
+        <article className="tile glass rv pop t-save" style={{ ["--d" as string]: "0.14s" }}>
           <h3>{t.trust[1].title}</h3>
           <p>{t.trust[1].text}</p>
         </article>

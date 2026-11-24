@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useLang } from "./LanguageProvider";
 import { useScrollProgress } from "@/hooks/useScrollProgress";
 import { Icon } from "./Icon";
@@ -16,7 +16,44 @@ export function Hero({ release }: { release: Release | null }) {
   const { t } = useLang();
   const h = t.hero;
   const ref = useRef<HTMLElement>(null);
-  useScrollProgress(ref, (p) => ref.current?.style.setProperty("--hp", p.toFixed(3)));
+  useScrollProgress(ref, (p) => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.setProperty("--hp", p.toFixed(3));
+    el.style.setProperty("--hs", Math.min(1, p * 1.8).toFixed(3)); // the shrink finishes after about half the hero has scrolled away
+  });
+
+  // The colour field leans towards the pointer and a soft light follows it. Eased every frame, and only while the hero is on screen.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || window.matchMedia("(prefers-reduced-motion: reduce)").matches || !window.matchMedia("(pointer: fine)").matches) return;
+    let tx = 0, ty = 0, cx = 0, cy = 0, raf = 0, visible = true;
+    const set = (k: string, v: number) => el.style.setProperty(k, v.toFixed(4));
+    const loop = () => {
+      cx += (tx - cx) * 0.07;
+      cy += (ty - cy) * 0.07;
+      set("--mx", cx);
+      set("--my", cy);
+      raf = visible ? requestAnimationFrame(loop) : 0;
+    };
+    const onMove = (e: PointerEvent) => {
+      const r = el.getBoundingClientRect();
+      tx = ((e.clientX - r.left) / r.width) * 2 - 1;
+      ty = ((e.clientY - r.top) / r.height) * 2 - 1;
+      if (!raf && visible) raf = requestAnimationFrame(loop);
+    };
+    const io = new IntersectionObserver(([en]) => {
+      visible = en.isIntersecting;
+      if (visible && !raf) raf = requestAnimationFrame(loop);
+    });
+    io.observe(el);
+    window.addEventListener("pointermove", onMove, { passive: true });
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      io.disconnect();
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, []);
   const href = release?.installerUrl ?? links.releases;
 
   return (
@@ -27,6 +64,7 @@ export function Hero({ release }: { release: Release | null }) {
             <i className="b1" />
             <i className="b2" />
             <i className="b3" />
+            <i className="cursor-glow" />
             <div className="grain" />
           </div>
 
