@@ -15,7 +15,7 @@ export const links = {
   releases: `https://github.com/${site.repo}/releases/latest`,
   issues: `https://github.com/${site.repo}/issues`,
   changelog: `https://github.com/${site.repo}/releases`,
-  guideEn: `https://github.com/${site.repo}/blob/main/docs/HomeLedger_Guide.pdf`,
-  guideMl: `https://github.com/${site.repo}/blob/main/docs/HomeLedger_Guide_Malayalam.pdf`,
+  guideEn: "/guides/HomeLedger_Guide.pdf",
+  guideMl: "/guides/HomeLedger_Guide_Malayalam.pdf",
   guideMd: `https://github.com/${site.repo}/blob/main/docs/USER_GUIDE.md`,
 } as const;

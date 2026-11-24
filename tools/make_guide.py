@@ -113,3 +113,14 @@ try:
     print("wrote docs/HomeLedger_Guide_Malayalam.pdf")
 except Exception as ex:
     print("Malayalam PDF skipped:", ex)
+
+
+# keep the website's downloadable copies in step with the guides
+site_dir = ROOT / "website" / "public" / "guides"
+if site_dir.parent.exists():
+    import shutil
+    site_dir.mkdir(exist_ok=True)
+    for n in ("HomeLedger_Guide.pdf", "HomeLedger_Guide_Malayalam.pdf"):
+        if (ROOT / "docs" / n).exists():
+            shutil.copy2(ROOT / "docs" / n, site_dir / n)
+    print("copied the PDFs into website/public/guides")

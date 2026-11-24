@@ -29,7 +29,10 @@ export const viewport: Viewport = { themeColor: "#f2f0ea", width: "device-width"
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <noscript><style>{`.preloader{display:none!important}`}</style></noscript>
+        {children}
+      </body>
     </html>
   );
 }

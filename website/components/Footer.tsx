@@ -23,7 +23,7 @@ export function Footer() {
             <li><a href={links.repo} target="_blank" rel="noopener noreferrer">{f.source}</a></li>
             <li><a href={links.releases} target="_blank" rel="noopener noreferrer">{f.releases}</a></li>
             <li><a href={links.changelog} target="_blank" rel="noopener noreferrer">{f.changelog}</a></li>
-            <li><a href={links.guideMd} target="_blank" rel="noopener noreferrer">{f.guide}</a></li>
+            <li><a href={links.guideEn} target="_blank" rel="noopener">{f.guide}</a></li>
             <li><a href={links.issues} target="_blank" rel="noopener noreferrer">{f.issues}</a></li>
           </ul>
         </nav>

@@ -1,5 +1,6 @@
 import { LanguageProvider } from "@/components/LanguageProvider";
 import { MotionRoot } from "@/components/MotionRoot";
+import { Preloader } from "@/components/Preloader";
 import { PageGlow } from "@/components/PageGlow";
 import { Header } from "@/components/Header";
 import { Hero } from "@/components/Hero";
@@ -22,6 +23,7 @@ export default async function Home() {
   return (
     <LanguageProvider>
       <a className="skip" href="#features">Skip to content</a>
+      <Preloader />
       <PageGlow />
       <Header />
       <main>

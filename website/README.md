@@ -29,7 +29,7 @@ If you use a custom domain, put it in `lib/site.ts` (`url`).
 | `components/` | One component per section (`Hero`, `Hub`, `Bento`, `Showcase`, `Safety`, `Download`, `Faq`, ...), plus `Section`, `Icon`, `AppFrame`, `PageGlow` and the language switch. `MotionRoot` reveals things as they scroll into view. |
 | `hooks/` | `useScrollProgress`: feeds scroll position to CSS variables without re-rendering React. |
 | `app/` | `layout.tsx` (metadata and Open Graph), `page.tsx` (the order of sections), `globals.css` (theme), `robots.ts`, `sitemap.ts`. |
-| `public/` | Logo, Open Graph image and the screenshots (made-up household data). |
+| `public/` | Logo, Open Graph image, the screenshots (made-up household data) and `guides/` (the two PDF guides). `python tools/make_guide.py` refreshes the PDFs here too. |
 
 ## Editing
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLang } from "./LanguageProvider";
 import { LanguageSwitch } from "./LanguageSwitch";
 import { Icon } from "./Icon";
@@ -14,17 +14,49 @@ export function Header() {
   const [open, setOpen] = useState(false);
   const [light, setLight] = useState(false);
 
+  const bar = useRef<HTMLElement>(null);
+  const pills = useRef<HTMLElement>(null);
+
   useEffect(() => {
-    const on = () => setLight(window.scrollY > window.innerHeight * 0.7);
-    on();
-    window.addEventListener("scroll", on, { passive: true });
-    return () => window.removeEventListener("scroll", on);
+    // How far the link pills must slide to rest beside the (icon-only) logo. Measured again on resize.
+    let shift = 0;
+    const measure = () => {
+      const b = bar.current, p = pills.current;
+      if (!b || !p || window.innerWidth <= 860) {
+        shift = 0;
+        b?.style.setProperty("--shift", "0px");
+        return;
+      }
+      const left = parseFloat(getComputedStyle(b).paddingLeft) || 26;
+      const target = window.innerWidth / 2 - 32 - 36 - p.offsetWidth;
+      shift = Math.max(0, target - left);
+      b.style.setProperty("--shift", `${shift}px`);
+    };
+    let raf = 0;
+    const update = () => {
+      raf = 0;
+      const y = window.scrollY, vh = window.innerHeight;
+      const k = Math.min(1, Math.max(0, y / (vh * 0.45)));
+      bar.current?.style.setProperty("--bp", k.toFixed(3));
+      setLight(y > vh * 0.7);
+    };
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(update); };
+    const onResize = () => { measure(); onScroll(); };
+    measure();
+    update();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onResize);
+      if (raf) cancelAnimationFrame(raf);
+    };
   }, []);
 
   const label: Record<(typeof anchors)[number], string> = { features: t.nav.features, screens: t.nav.screens, safety: t.nav.safety, faq: t.nav.faq };
   return (
-    <header className={`bar ${light ? "bar-light" : ""}`}>
-      <nav className={`bar-pills ${open ? "open" : ""}`} aria-label="Main">
+    <header ref={bar} className={`bar ${light ? "bar-light" : ""}`}>
+      <nav ref={pills} className={`bar-pills ${open ? "open" : ""}`} aria-label="Main">
         {anchors.map((a) => (
           <a key={a} href={`#${a}`} onClick={() => setOpen(false)}>
             {label[a]}

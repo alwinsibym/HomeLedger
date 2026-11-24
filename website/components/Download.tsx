@@ -42,9 +42,22 @@ export function Download({ release }: { release: Release | null }) {
           </div>
           <div className="panel glass rv">
             <h3>{d.guidesTitle}</h3>
-            <ul className="linklist">
-              <li><a href={links.guideEn} target="_blank" rel="noopener noreferrer">{d.guideEn}</a></li>
-              <li><a href={links.guideMl} target="_blank" rel="noopener noreferrer" lang="ml">{d.guideMl}</a></li>
+            <ul className="guides">
+              {[
+                { label: d.guideEn, href: links.guideEn, name: "HomeLedger_Guide.pdf", lang: "en" },
+                { label: d.guideMl, href: links.guideMl, name: "HomeLedger_Guide_Malayalam.pdf", lang: "ml" },
+              ].map((g) => (
+                <li key={g.href}>
+                  <span className="guide-name" lang={g.lang}>{g.label}</span>
+                  <span className="guide-actions">
+                    <a className="mini" href={g.href} target="_blank" rel="noopener">{d.open}</a>
+                    <a className="mini solid" href={g.href} download={g.name}>
+                      <Icon name="download" size={14} />
+                      {d.save}
+                    </a>
+                  </span>
+                </li>
+              ))}
             </ul>
           </div>
         </div>

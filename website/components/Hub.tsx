@@ -20,7 +20,7 @@ export function Hub() {
 
   const nodes = h.nodes.map((nd, i) => {
     const a = ((-90 + (360 / h.nodes.length) * i) * Math.PI) / 180;
-    return { ...nd, x: 50 + RX * Math.cos(a), y: 30 + RY * Math.sin(a), s: 0.1 + i * 0.085 };
+    return { ...nd, x: 50 + RX * Math.cos(a), y: 30 + RY * Math.sin(a), s: 0.16 + i * 0.075 };
   });
 
   return (
