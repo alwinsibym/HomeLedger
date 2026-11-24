@@ -121,12 +121,12 @@ button { font: inherit; }
 
 .hero-body { position: relative; z-index: 2; flex: none; width: 100%; text-align: center; padding: clamp(84px, 11vh, 120px) 24px 0; transform: translateY(calc(var(--hp) * -60px)); opacity: calc(1 - var(--hp) * 1.4); }
 .hero-body::before { content: ""; position: absolute; z-index: -1; inset: 4% 8% -6%; background: radial-gradient(ellipse at 50% 45%, rgba(5, 20, 48, 0.5), rgba(5, 20, 48, 0.22) 45%, transparent 72%); pointer-events: none; }
-.hero h1 { font-size: clamp(2.2rem, 5.2vw, 4.6rem); font-weight: 700; letter-spacing: -0.035em; line-height: 1.04; transform-style: preserve-3d; transform: perspective(1000px) rotateX(calc(var(--my, 0) * -5deg)) rotateY(calc(var(--mx, 0) * 7deg)); transition: transform 0.2s linear;
-  /* a stepped extrusion gives the letters depth; the last layer is a soft cast shadow */
-  text-shadow: 0 1px 0 #2a5fad, 0 2px 0 #24539b, 0 3px 0 #1e478a, 0 4px 0 #193c79, 0 5px 0 #143268, 0 6px 0 #102959, 0 7px 0 #0c214a, 0 16px 26px rgba(0, 0, 0, 0.4); }
+.hero h1 { font-size: clamp(2.2rem, 5.2vw, 4.6rem); font-weight: 600; letter-spacing: -0.035em; line-height: 1.04; transform-style: preserve-3d; transform: perspective(1000px) rotateX(calc(var(--my, 0) * -5deg)) rotateY(calc(var(--mx, 0) * 7deg)); transition: transform 0.2s linear;
+  /* depth, kept quiet: a faint highlight on top, a short soft edge below, and a wide cast shadow */
+  text-shadow: 0 -1px 0 rgba(255, 255, 255, 0.5), 0 2px 1px rgba(8, 30, 70, 0.28), 0 4px 3px rgba(8, 30, 70, 0.2), 0 18px 36px rgba(3, 14, 36, 0.32);
 .h1-pre { display: block; }
 .h1-word { display: block; }
-.h1-word em { font-style: normal; color: var(--hi); text-shadow: 0 1px 0 #e0a814, 0 2px 0 #c98f0c, 0 3px 0 #b07a08, 0 4px 0 #946405, 0 5px 0 #7a5004, 0 6px 0 #5f3e03, 0 7px 0 #452d02, 0 16px 26px rgba(0, 0, 0, 0.4); }
+.h1-word em { font-style: normal; color: var(--hi); text-shadow: 0 -1px 0 rgba(255, 255, 255, 0.55), 0 2px 1px rgba(120, 80, 0, 0.35), 0 4px 3px rgba(120, 80, 0, 0.22), 0 18px 36px rgba(3, 14, 36, 0.32); }
 .hero-lead { max-width: 36rem; margin: 22px auto 0; font-size: 1.1rem; color: #fff; text-shadow: 0 1px 14px rgba(3, 14, 36, 0.55), 0 0 2px rgba(3, 14, 36, 0.4); }
 .cta { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 26px; }
 
